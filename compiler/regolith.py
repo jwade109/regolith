@@ -259,7 +259,7 @@ TRACK_TOKEN_REGEX = r"TRACK(\d+)$"
 PITCH_TOKEN_REGEX = r"([A-G]\d?#?)$"
 SCALE_DEGREE_REGEX = r"(\d+)([#b])?$"
 PHONEME_TOKEN_REGEX = r"([a-z\-\.]+)(:(\d+))?(\/(\d+))?$"
-SCALE_DECLARATION_REGEX = r"([A-G])([#b]?)((\d+)|PENTA|MAJOR|MINOR|CHROM)$"
+SCALE_DECLARATION_REGEX = r"([A-G]\d*[#b]?)\[?((\d+)|PENTA|MAJOR|MINOR|CHROM)\]?$"
 
 
 NAMED_SCALES = {
@@ -349,17 +349,13 @@ def cast_literal_to_symbol(literal: Literal):
     if scale_regex:
         tone_str = scale_regex.group(1)
         if tone_str not in NOTE_TO_TONE:
+            print(tone_str)
             return None
         tonic_id = NOTE_TO_TONE[tone_str]
-        sharp_flat = scale_regex.group(2)
-        sequence_or_name = scale_regex.group(3)
+        sequence_or_name = scale_regex.group(2)
         sequence = scale_name_to_sequence(sequence_or_name)
         if not sequence:
             sequence = sequence_or_name
-        if sharp_flat == "#":
-            tonic_id += 1
-        elif sharp_flat == "b":
-            tonic_id -= 1
         symbol = ScaleDeclaration()
         symbol.scale.tonic = tonic_id
         symbol.scale.sequence = [int(x) for x in sequence]
@@ -472,9 +468,7 @@ def export_notes_to_moonbase(notes) -> List[ExportedTrack]:
         elif isinstance(n, TrackDirective):
             track_id = n.track_id
         elif isinstance(n, BeatAssertion):
-            if n.beats == tracks[track_id].beats:
-                pass
-            else:
+            if n.beats != tracks[track_id].beats:
                 print(f"Failed assertion; expected beats={n.beats}, got {tracks[track_id].beats}")
                 print(n)
         elif isinstance(n, MeasureBar):
@@ -553,17 +547,7 @@ def main():
 
     lyrics_file = sys.argv[1]
     audio_file = sys.argv[2]
-
-    tokens = tokenize_file(lyrics_file)
-    notes, error = translate(tokens)
-    if error:
-        print(error)
-        return
-    if not notes:
-        print("No notes to export.")
-        return
-    tracks = export_notes_to_moonbase(notes)
-    compile_tracks(audio_file, *tracks)
+    compose(lyrics_file, audio_file)
 
 
 if __name__ == "__main__":
