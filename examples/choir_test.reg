@@ -2,13 +2,16 @@
 
 TRACK1 120BPM
 C . E . G . E  .
-C . E . C . B1 . :| :| :| :|
+C . E . C . B1 . :| :|
 
 TRACK2 60BPM
-E . F . G . F . :| :| :| :|
+E . F . G . F . :| :|
 
 TRACK3 30BPM
-C2 . A1 . C2 . A1 . :| :| :|
+C2 . A1 . C2 . A1 . :|
 
 TRACK4 120BPM
-C1 . - G1 . - C1 . - E1 . - :| :| :| :|
+C1 . - G1 . - C1 . - E1 . - :| :|
+
+TRACK5 240BPM
+C2 . . - - | E2 . . - - | C2 . . - - | . E2 . C2 . B2 .  :| :|
