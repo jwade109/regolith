@@ -199,6 +199,11 @@ class ExportedTrack:
     beats: float = 0
 
 
+@dataclass()
+class DynamicsDirective:
+    literal: Literal = None
+
+
 def to_moonbase_str(n: MoonbaseNote) -> str:
     ms = n.dur_ms
     bias = 67
@@ -260,6 +265,7 @@ PITCH_TOKEN_REGEX = r"([A-G]\d?#?)$"
 SCALE_DEGREE_REGEX = r"(\d+)([#b])?$"
 PHONEME_TOKEN_REGEX = r"([a-z\-\.]+)(:(\d+))?(\/(\d+))?$"
 SCALE_DECLARATION_REGEX = r"([A-G]\d*[#b]?)\[?((\d+)|PENTA|MAJOR|MINOR|CHROM)\]?$"
+DYNAMICS_REGEX = r"FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO"
 
 
 NAMED_SCALES = {
@@ -342,6 +348,12 @@ def cast_literal_to_symbol(literal: Literal):
         if degree_match.group(2):
             decor = degree_match.group(2)
             symbol.offset = 1 if decor == "#" else -1
+        symbol.literal = literal
+        return symbol
+
+    dynamics_regex = re.match(DYNAMICS_REGEX, literal.literal)
+    if dynamics_regex:
+        symbol = DynamicsDirective()
         symbol.literal = literal
         return symbol
 
@@ -525,6 +537,8 @@ def compile_tracks(filename, *tracks):
         if master_track is None:
             master_track = audio
         else:
+            # this is how you make stuff quieter
+            audio -= 9
             master_track = master_track.overlay(audio)
 
     master_track.export(filename, format='mp3')
