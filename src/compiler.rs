@@ -12,7 +12,81 @@ use anyhow::{Result, Context, bail};
 
 extern crate reqwest;
 
-#[derive(Debug, PartialEq)]
+static PITCH_MAP : &[(&str, u8)] =
+&[
+    // ambiguous map -- get rid of it!
+    ("A"  , 10),
+    ("A#" , 11),
+    ("B"  , 12),
+    ("C"  , 13),
+    ("C#" , 14),
+    ("D"  , 15),
+    ("D#" , 16),
+    ("E"  , 17),
+    ("F"  , 18),
+    ("F#" , 19),
+    ("G"  , 20),
+    ("G#" , 21),
+
+    ("C1" , 1),
+    ("C1#", 2),
+    ("D1" , 3),
+    ("D1#", 4),
+    ("E1" , 5),
+    ("F1" , 6),
+    ("F1#", 7),
+    ("G1" , 8),
+    ("G1#", 9),
+    ("A1" , 10),
+    ("A1#", 11),
+    ("B1" , 12),
+    ("C2" , 13),
+    ("C2#", 14),
+    ("D2" , 15),
+    ("D2#", 16),
+    ("E2" , 17),
+    ("F2" , 18),
+    ("F2#", 19),
+    ("G2" , 20),
+    ("G2#", 21),
+    ("A2" , 22),
+    ("A2#", 23),
+    ("B2" , 24),
+    ("C3" , 25),
+    ("C3#", 26),
+    ("D3" , 27),
+    ("D3#", 28),
+    ("E3" , 29),
+    ("F3" , 30),
+    ("F3#", 31),
+    ("G3" , 32),
+    ("G3#", 33),
+    ("A3" , 34),
+    ("A3#", 35),
+    ("B3" , 36),
+    ("C4" , 37)
+];
+
+pub fn pitch_string_to_id(pitch: &str) -> Option<u8>
+{
+    let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)?;
+    return Some(*i);
+}
+
+#[test]
+fn pitch_string_conversions()
+{
+    assert_eq!(pitch_string_to_id("C1"),  Some(1));
+    assert_eq!(pitch_string_to_id("D2#"), Some(16));
+    assert_eq!(pitch_string_to_id("A2#"), Some(23));
+    assert_eq!(pitch_string_to_id("G3"),  Some(32));
+    assert_eq!(pitch_string_to_id("C4"),  Some(37));
+    assert_eq!(pitch_string_to_id(""),    None);
+    assert_eq!(pitch_string_to_id("J3"),  None);
+    assert_eq!(pitch_string_to_id("Bb"),  None);
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Literal
 {
     literal: String,
@@ -21,25 +95,7 @@ pub struct Literal
     colno: i32,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct TrackDirective
-{
-    track_id: i32
-}
-
-#[derive(Debug, PartialEq)]
-pub struct TempoDirective
-{
-    bpm: i32
-}
-
-#[derive(Debug, PartialEq)]
-pub struct PitchDirective
-{
-    tone_str: String
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct RegoNote
 {
     prefix: String,
@@ -47,7 +103,7 @@ pub struct RegoNote
     beats: Fraction
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MoonbaseNote
 {
     prefix: String,
@@ -56,7 +112,7 @@ pub struct MoonbaseNote
     tone_id: i32
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DynamicLevel
 {
     PIANISSIMO,
@@ -67,17 +123,17 @@ pub enum DynamicLevel
     FORTISSIMO
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Token
 {
-    Track(TrackDirective),
-    Tempo(TempoDirective),
-    Pitch(PitchDirective),
+    Track(u8),
+    Tempo(u16),
+    AbsolutePitch(u8),
     Note(RegoNote),
     Repeat(),
     BeatAssert(i32),
-    Scale(),
-    ScaleDegree(),
+    Scale(String),
+    ScaleDegree(i32),
     Dynamic(DynamicLevel),
     MeasureBar()
 }
@@ -153,7 +209,7 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
     let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
     let track_token_re = regex!(r"^TRACK(\d+)$");
-    let pitch_token_re = regex!(r"^[A-G]\d?#?$");
+    let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
     let scale_decl_re = regex!(r"^([A-G]\d*[#b]?)\[?((\d+)|PENTA|MAJOR|MINOR|CHROM)\]?$");
@@ -162,25 +218,26 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
 
     parse_rule!(&literal, bpm_token_re, |cap: Vec<Option<String>>|
     {
-        let bpm : i32 = cap.get(1).context("Bad regex")?
+        let bpm : u16 = cap.get(1).context("Bad regex")?
                          .as_ref().context("Bad regex")?
                           .parse().context("Bad regex")?;
-        return Ok(Token::Tempo(TempoDirective{bpm: bpm}))
+        return Ok(Token::Tempo(bpm));
     });
 
     parse_rule!(&literal, track_token_re, |cap: Vec<Option<String>>|
     {
-        let idx : i32 = cap.get(1).context("Bad regex")?
-                         .as_ref().context("Bad regex")?
-                          .parse().context("Bad regex")?;
-        return Ok(Token::Track(TrackDirective{track_id: idx}))
+        let idx : u8 = cap.get(1).context("Bad regex")?
+                        .as_ref().context("Bad regex")?
+                         .parse().context("Bad regex")?;
+        return Ok(Token::Track(idx));
     });
 
     parse_rule!(&literal, pitch_token_re, |cap: Vec<Option<String>>|
     {
         let s = cap.get(0).context("Bad regex")?
                  .as_ref().context("Bad regex")?.clone();
-        return Ok(Token::Pitch(PitchDirective{tone_str: s}));
+        let id = pitch_string_to_id(&s).context(format!("Bad pitch: `{}`", &s))?;
+        return Ok(Token::AbsolutePitch(id));
     });
 
     parse_rule!(&literal, note_token_re, |cap: Vec<Option<String>>|
@@ -219,7 +276,9 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
 
     parse_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::Scale());
+        let s : String = cap.get(0).context("Bad regex")?.clone()
+                                   .context("Bad regex")?.clone();
+        return Ok(Token::Scale(s));
     });
 
     parse_rule!(&literal, dynamic_decl_re, |cap: Vec<Option<String>>|
@@ -230,7 +289,10 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
 
     parse_rule!(&literal, scale_degree_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::ScaleDegree());
+        let deg : i32 = cap.get(1).context("Bad regex")?
+                         .as_ref().context("Bad regex")?
+                          .parse().context("Bad regex")?;
+        return Ok(Token::ScaleDegree(deg));
     });
 
     parse_rule!(&literal, measure_bar_re, |cap: Vec<Option<String>>|
@@ -348,27 +410,24 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 
     for t in tokens
     {
-        if let Token::Note(ref n) = t
-        {
-            let m = MoonbaseNote
-            {
-                prefix: n.prefix.clone(),
-                suffix: n.suffix.clone(),
-                tone_id: 14,
-                dur_ms: 250
-            };
-            let mbs = to_moonbase_str(&m);
-            // println!("{:?}, {}", t, mbs);
-        }
+        println!("{:?}", t);
     }
 
     return Ok(());
 }
 
+macro_rules! assert_tokenize
+{
+    ($string: expr, $expect: expr) =>
+    {
+        assert_eq!(tokenize_literal($string).unwrap(), $expect);
+    }
+}
+
 #[test]
 fn note_parsing()
 {
-    assert_eq!(tokenize_literal("ih-s:3/2").unwrap(),
+    assert_tokenize!("ih-s:3/2",
     Token::Note(RegoNote
     {
         prefix: "ih".to_string(),
@@ -376,7 +435,7 @@ fn note_parsing()
         beats: Fraction::new(3u64, 2u64)
     }));
 
-    assert_eq!(tokenize_literal("uh-n/2").unwrap(),
+    assert_tokenize!("uh-n/2",
     Token::Note(RegoNote
     {
         prefix: "uh".to_string(),
@@ -384,7 +443,7 @@ fn note_parsing()
         beats: Fraction::new(1u64, 2u64)
     }));
 
-    assert_eq!(tokenize_literal("ne/3").unwrap(),
+    assert_tokenize!("ne/3",
     Token::Note(RegoNote
     {
         prefix: "ne".to_string(),
@@ -392,7 +451,7 @@ fn note_parsing()
         beats: Fraction::new(1u64, 3u64)
     }));
 
-    assert_eq!(tokenize_literal("-:12").unwrap(),
+    assert_tokenize!("-:12",
     Token::Note(RegoNote
     {
         prefix: "".to_string(),
@@ -402,61 +461,56 @@ fn note_parsing()
 }
 
 #[test]
+fn absolute_pitch_parsing()
+{
+    assert_tokenize!("C", Token::AbsolutePitch(13));
+    assert_tokenize!("D", Token::AbsolutePitch(15));
+    assert_tokenize!("E", Token::AbsolutePitch(17));
+}
+
+#[test]
 fn scale_parsing()
 {
     // TODO flesh this out
-    assert_eq!(tokenize_literal("CMAJOR").unwrap(),  Token::Scale());
-    assert_eq!(tokenize_literal("AMINOR").unwrap(),  Token::Scale());
-    assert_eq!(tokenize_literal("DbMINOR").unwrap(), Token::Scale());
-    assert_eq!(tokenize_literal("G#PENTA").unwrap(), Token::Scale());
+    assert_tokenize!("CMAJOR", Token::Scale());
+    assert_tokenize!("AMINOR",  Token::Scale());
+    assert_tokenize!("DbMINOR", Token::Scale());
+    assert_tokenize!("G#PENTA", Token::Scale());
+
+    // not sure how I feel about this one
+    assert_tokenize!("Fb3",     Token::Scale());
 }
 
 #[test]
 fn bar_parsing()
 {
-    assert_eq!(tokenize_literal("|").unwrap(), Token::MeasureBar());
+    assert_tokenize!("|", Token::MeasureBar());
 }
 
 #[test]
 fn repeat_parsing()
 {
-    assert_eq!(tokenize_literal(":|").unwrap(), Token::Repeat());
+    assert_tokenize!(":|", Token::Repeat());
 }
 
 #[test]
 fn beats_assert_parsing()
 {
-    assert_eq!(tokenize_literal("@16").unwrap(),   Token::BeatAssert(16));
-    assert_eq!(tokenize_literal("@32").unwrap(),   Token::BeatAssert(32));
-    assert_eq!(tokenize_literal("@27").unwrap(),   Token::BeatAssert(27));
-    assert_eq!(tokenize_literal("@0").unwrap(),    Token::BeatAssert(0));
-    assert_eq!(tokenize_literal("@2452").unwrap(), Token::BeatAssert(2452));
+    assert_tokenize!("@16",   Token::BeatAssert(16));
+    assert_tokenize!("@32",   Token::BeatAssert(32));
+    assert_tokenize!("@27",   Token::BeatAssert(27));
+    assert_tokenize!("@0",    Token::BeatAssert(0));
+    assert_tokenize!("@2452", Token::BeatAssert(2452));
     assert!(   tokenize_literal("@-3").is_err());
 }
 
 #[test]
 fn bpm_parsing()
 {
-    assert_eq!(tokenize_literal("120BPM").unwrap(),
-    Token::Tempo(TempoDirective
-    {
-        bpm: 120
-    }));
-    assert_eq!(tokenize_literal("92BPM").unwrap(),
-    Token::Tempo(TempoDirective
-    {
-        bpm: 92
-    }));
-    assert_eq!(tokenize_literal("1103BPM").unwrap(),
-    Token::Tempo(TempoDirective
-    {
-        bpm: 1103
-    }));
-    assert_eq!(tokenize_literal("0BPM").unwrap(),
-    Token::Tempo(TempoDirective
-    {
-        bpm: 0
-    }));
+    assert_tokenize!("120BPM",  Token::Tempo(120));
+    assert_tokenize!("92BPM",   Token::Tempo(92));
+    assert_tokenize!("1103BPM", Token::Tempo(1103));
+    assert_tokenize!("0BPM",    Token::Tempo(0));
 
     assert!(tokenize_literal("-12BPM").is_err());
     assert!(tokenize_literal("CHEESEBPM").is_err());
@@ -466,12 +520,12 @@ fn bpm_parsing()
 #[test]
 fn dynamic_parsing()
 {
-    assert_eq!(tokenize_literal("PIANISSIMO").unwrap(), Token::Dynamic(DynamicLevel::PIANISSIMO));
-    assert_eq!(tokenize_literal("PIANO").unwrap(),      Token::Dynamic(DynamicLevel::PIANO));
-    assert_eq!(tokenize_literal("MEZZOPIANO").unwrap(), Token::Dynamic(DynamicLevel::MEZZOPIANO));
-    assert_eq!(tokenize_literal("MEZZOFORTE").unwrap(), Token::Dynamic(DynamicLevel::MEZZOFORTE));
-    assert_eq!(tokenize_literal("FORTE").unwrap(),      Token::Dynamic(DynamicLevel::FORTE));
-    assert_eq!(tokenize_literal("FORTISSIMO").unwrap(), Token::Dynamic(DynamicLevel::FORTISSIMO));
+    assert_tokenize!("PIANISSIMO", Token::Dynamic(DynamicLevel::PIANISSIMO));
+    assert_tokenize!("PIANO",      Token::Dynamic(DynamicLevel::PIANO));
+    assert_tokenize!("MEZZOPIANO", Token::Dynamic(DynamicLevel::MEZZOPIANO));
+    assert_tokenize!("MEZZOFORTE", Token::Dynamic(DynamicLevel::MEZZOFORTE));
+    assert_tokenize!("FORTE",      Token::Dynamic(DynamicLevel::FORTE));
+    assert_tokenize!("FORTISSIMO", Token::Dynamic(DynamicLevel::FORTISSIMO));
 }
 
 #[test]
@@ -480,4 +534,11 @@ fn garbage_parsing()
     assert!(tokenize_literal("wefwe$234").is_err());
     assert!(tokenize_literal("dddFd").is_err());
     assert!(tokenize_literal("...--").is_err());
+}
+
+#[test]
+fn compile_songs()
+{
+    assert!(compile("examples/batman.reg", "/tmp/batman.mp3").is_ok());
+    assert!(compile("examples/mariah.reg", "/tmp/mariah.mp3").is_ok());
 }
