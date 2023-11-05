@@ -14,5 +14,5 @@ for reg in reg_files:
     #         print(f"(built) {out}")
     #         continue
     print(f"Building: {reg} -> {out}")
-    if os.system(f"cargo run --bin regolith -- {reg} {out}"):
+    if os.system(f"cargo run --release --bin regolith -- {reg} {out}"):
         break

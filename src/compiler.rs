@@ -7,13 +7,12 @@ use regex_macro::regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::fs::File;
-use std::error::Error;
-use anyhow::{Result, Context, bail};
+use anyhow::{Result, Error, Context, bail};
 
 extern crate reqwest;
 
-static PITCH_MAP : &[(&str, u8)] =
-&[
+static PITCH_MAP : [(&str, u8); 49] =
+[
     // ambiguous map -- get rid of it!
     ("A"  , 10),
     ("A#" , 11),
@@ -67,23 +66,50 @@ static PITCH_MAP : &[(&str, u8)] =
     ("C4" , 37)
 ];
 
-pub fn pitch_string_to_id(pitch: &str) -> Option<u8>
+pub fn pitch_string_to_id(pitch: &str) -> Result<u8>
 {
-    let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)?;
-    return Some(*i);
+    let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)
+        .context(format!("Bad pitch string: `{}`", pitch))?;
+    return Ok(*i);
 }
 
 #[test]
 fn pitch_string_conversions()
 {
-    assert_eq!(pitch_string_to_id("C1"),  Some(1));
-    assert_eq!(pitch_string_to_id("D2#"), Some(16));
-    assert_eq!(pitch_string_to_id("A2#"), Some(23));
-    assert_eq!(pitch_string_to_id("G3"),  Some(32));
-    assert_eq!(pitch_string_to_id("C4"),  Some(37));
-    assert_eq!(pitch_string_to_id(""),    None);
-    assert_eq!(pitch_string_to_id("J3"),  None);
-    assert_eq!(pitch_string_to_id("Bb"),  None);
+    assert_eq!(pitch_string_to_id("C1").ok(),  Some(1));
+    assert_eq!(pitch_string_to_id("D2#").ok(), Some(16));
+    assert_eq!(pitch_string_to_id("A2#").ok(), Some(23));
+    assert_eq!(pitch_string_to_id("G3").ok(),  Some(32));
+    assert_eq!(pitch_string_to_id("C4").ok(),  Some(37));
+    assert_eq!(pitch_string_to_id("").ok(),    None);
+    assert_eq!(pitch_string_to_id("J3").ok(),  None);
+    assert_eq!(pitch_string_to_id("Bb").ok(),  None);
+}
+
+static NAMED_SCALE_MAP : [(&str, &[u8; 12]); 4] =
+[
+    ("MAJOR", &[2, 2, 1, 2, 2, 2, 1, 0, 0, 0, 0, 0]),
+    ("MINOR", &[2, 1, 2, 2, 1, 2, 2, 0, 0, 0, 0, 0]),
+    ("PENTA", &[2, 2, 3, 2, 3, 0, 0, 0, 0, 0, 0, 0]),
+    ("CHROM", &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+];
+
+pub fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
+{
+    let (n, s) = NAMED_SCALE_MAP.iter().find(|(n, s)| *n == scale)?;
+    let v : Vec<u8> = s.iter().cloned().filter(|x| *x > 0u8).collect::<Vec<_>>();
+    return Some(v);
+}
+
+#[test]
+fn named_scale_lookup()
+{
+    assert_eq!(get_named_scale_steps("MAJOR"), Some(vec![2, 2, 1, 2, 2, 2, 1]));
+    assert_eq!(get_named_scale_steps("MINOR"), Some(vec![2, 1, 2, 2, 1, 2, 2]));
+    assert_eq!(get_named_scale_steps("PENTA"), Some(vec![2, 2, 3, 2, 3]));
+    assert_eq!(get_named_scale_steps("CHROM"), Some(vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]));
+    assert_eq!(get_named_scale_steps("DINGO"), None);
+    assert_eq!(get_named_scale_steps(""),      None);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -109,7 +135,7 @@ pub struct MoonbaseNote
     prefix: String,
     suffix: String,
     dur_ms: i32,
-    tone_id: i32
+    tone_id: u8
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -124,6 +150,13 @@ pub enum DynamicLevel
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Scale
+{
+    tone_id: u8,
+    steps: Vec<u8>
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Token
 {
     Track(u8),
@@ -132,7 +165,7 @@ pub enum Token
     Note(RegoNote),
     Repeat(),
     BeatAssert(i32),
-    Scale(String),
+    Scale(Scale),
     ScaleDegree(i32),
     Dynamic(DynamicLevel),
     MeasureBar()
@@ -202,6 +235,11 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
     };
 }
 
+pub fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
+{
+    return Ok(captures.get(i).context("Bad regex")?.clone().context("Bad regex")?.clone());
+}
+
 pub fn tokenize_literal(literal: &str) -> Result<Token>
 {
     let measure_bar_re = regex!(r"^\|");
@@ -212,7 +250,7 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
-    let scale_decl_re = regex!(r"^([A-G]\d*[#b]?)\[?((\d+)|PENTA|MAJOR|MINOR|CHROM)\]?$");
+    let scale_decl_re = regex!(r"^([A-G]\d*[#b]?)(\[(\d+)\]|PENTA|MAJOR|MINOR|CHROM)?$");
     let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
 
@@ -270,14 +308,29 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
 
     parse_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
     {
-        let beats : i32 = cap[1].as_ref().unwrap().parse().unwrap();
+        let beats : i32 = get_nth_capture(&cap, 1)?.parse().unwrap();
         return Ok(Token::BeatAssert(beats));
     });
 
     parse_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
     {
-        let s : String = cap.get(0).context("Bad regex")?.clone()
-                                   .context("Bad regex")?.clone();
+        let pitch_str = get_nth_capture(&cap, 1)?;
+        let tone_id = pitch_string_to_id(&pitch_str)?;
+        let steps : Vec<u8> = if let Some(numbers) = cap.get(3).context("Bad regex")?
+        {
+            numbers.chars().map(|c| c.to_digit(10).unwrap() as u8).collect::<Vec<_>>()
+        }
+        else
+        {
+            get_named_scale_steps(&get_nth_capture(&cap, 2)?).context("Bad regex")?
+        };
+
+        let s = Scale
+        {
+            tone_id: tone_id,
+            steps: steps
+        };
+
         return Ok(Token::Scale(s));
     });
 
@@ -410,7 +463,7 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 
     for t in tokens
     {
-        println!("{:?}", t);
+        // println!("{:?}", t);
     }
 
     return Ok(());
@@ -420,7 +473,15 @@ macro_rules! assert_tokenize
 {
     ($string: expr, $expect: expr) =>
     {
-        assert_eq!(tokenize_literal($string).unwrap(), $expect);
+        match tokenize_literal($string)
+        {
+            Ok(result) => assert_eq!(result, $expect),
+            Err(error) =>
+            {
+                println!("Error: {:?}", error);
+                assert!(false);
+            }
+        }
     }
 }
 
@@ -471,14 +532,35 @@ fn absolute_pitch_parsing()
 #[test]
 fn scale_parsing()
 {
-    // TODO flesh this out
-    assert_tokenize!("CMAJOR", Token::Scale());
-    assert_tokenize!("AMINOR",  Token::Scale());
-    assert_tokenize!("DbMINOR", Token::Scale());
-    assert_tokenize!("G#PENTA", Token::Scale());
+    assert_tokenize!("CMAJOR", Token::Scale(Scale
+    {
+        tone_id: 13,
+        steps: vec![2, 2, 1, 2, 2, 2, 1]
+    }));
 
-    // not sure how I feel about this one
-    assert_tokenize!("Fb3",     Token::Scale());
+    assert_tokenize!("AMINOR", Token::Scale(Scale
+    {
+        tone_id: 10,
+        steps: vec![2, 1, 2, 2, 1, 2, 2]
+    }));
+
+    assert_tokenize!("G#PENTA", Token::Scale(Scale
+    {
+        tone_id: 21,
+        steps: vec![2, 2, 3, 2, 3]
+    }));
+
+    assert_tokenize!("D3#CHROM", Token::Scale(Scale
+    {
+        tone_id: 28,
+        steps: vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    }));
+
+    // no brackets
+    assert!(tokenize_literal("Fb3").is_err());
+
+    // bad pitch
+    assert!(tokenize_literal("K4[22211]").is_err());
 }
 
 #[test]
@@ -501,7 +583,7 @@ fn beats_assert_parsing()
     assert_tokenize!("@27",   Token::BeatAssert(27));
     assert_tokenize!("@0",    Token::BeatAssert(0));
     assert_tokenize!("@2452", Token::BeatAssert(2452));
-    assert!(   tokenize_literal("@-3").is_err());
+    assert!(tokenize_literal("@-3").is_err());
 }
 
 #[test]
@@ -536,9 +618,29 @@ fn garbage_parsing()
     assert!(tokenize_literal("...--").is_err());
 }
 
+macro_rules! assert_result
+{
+    ($to_test: expr, $on_ok: expr) =>
+    {
+        match $to_test
+        {
+            Ok(result) => assert_eq!(result, $on_ok),
+            Err(error) =>
+            {
+                println!("Error: {:?}", error);
+                assert!(false);
+            }
+        }
+    }
+}
+
 #[test]
 fn compile_songs()
 {
-    assert!(compile("examples/batman.reg", "/tmp/batman.mp3").is_ok());
-    assert!(compile("examples/mariah.reg", "/tmp/mariah.mp3").is_ok());
+    assert_result!(compile("examples/batman.reg",     "/tmp/batman.mp3"),     ());
+    assert_result!(compile("examples/campfire.reg",   "/tmp/campfire.mp3"),   ());
+    assert_result!(compile("examples/choir_test.reg", "/tmp/choir_test.mp3"), ());
+    assert_result!(compile("examples/dynamics.reg",   "/tmp/dynamics.mp3"),   ());
+    assert_result!(compile("examples/scales.reg",     "/tmp/scales.mp3"),     ());
+    assert_result!(compile("examples/mariah.reg",     "/tmp/mariah.mp3"),     ());
 }
