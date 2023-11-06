@@ -149,7 +149,7 @@ pub enum DynamicLevel
     FORTISSIMO
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Scale
 {
     tone_id: u8,
@@ -163,7 +163,7 @@ pub enum Token
     Tempo(u16),
     AbsolutePitch(u8),
     Note(RegoNote),
-    Repeat(),
+    Repeat(bool),
     BeatAssert(i32),
     Scale(Scale),
     ScaleDegree(i32),
@@ -244,7 +244,8 @@ pub fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<Strin
 pub fn lex_literal(literal: &str) -> Result<Token>
 {
     let measure_bar_re = regex!(r"^\|");
-    let repeat_token_re = regex!(r"^\:\|");
+    let start_repeat_re = regex!(r"^\[:");
+    let stop_repeat_re = regex!(r"^:\]");
     let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
     let track_token_re = regex!(r"^\[(\d+)\]$");
@@ -297,9 +298,14 @@ pub fn lex_literal(literal: &str) -> Result<Token>
         return Ok(Token::Note(n));
     });
 
-    lex_rule!(&literal, repeat_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, start_repeat_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::Repeat());
+        return Ok(Token::Repeat(true));
+    });
+
+    lex_rule!(&literal, stop_repeat_re, |cap: Vec<Option<String>>|
+    {
+        return Ok(Token::Repeat(false));
     });
 
     lex_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
@@ -422,11 +428,9 @@ pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
 
 fn generate_moonbase(moonbase: &str, outpath: &str) -> Result<()>
 {
-    println!("{}", &moonbase);
-    let path = Path::new(outpath);
+    let mut file = File::create(&Path::new(outpath))?;
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
     let bytes = reqwest::blocking::get(url)?.bytes()?;
-    let mut file = File::create(&path)?;
     use std::io::Write;
     file.write_all(&bytes)?;
     return Ok(());
@@ -486,11 +490,16 @@ pub fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
     return Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32);
 }
 
-pub fn parse_file(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
+pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
 {
     let mut current_bpm : u16 = 120;
-    let mut current_track = 0;
+    let mut current_track : u8 = 0;
     let mut current_pitch = pitch_string_to_id("C2")?;
+    let mut current_scale = Scale
+    {
+        tone_id: pitch_string_to_id("C2")?,
+        steps: get_named_scale_steps("MAJOR").context("Bad default scale")?
+    };
 
     let mut ret = vec![];
 
@@ -510,11 +519,12 @@ pub fn parse_file(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
                     dur_ms: beats_to_millis(&n.beats, current_bpm).context("Bad fraction")?,
                     tone_id: current_pitch
                 };
+
                 ret.push(mb);
             }
-            Token::Repeat() => (),
+            Token::Repeat(b) => (),
             Token::BeatAssert(b) => (),
-            Token::Scale(s) => (),
+            Token::Scale(s) => current_scale = s.clone(),
             Token::ScaleDegree(d) => (),
             Token::Dynamic(l) => (),
             Token::MeasureBar() => ()
@@ -529,7 +539,7 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
     println!("{} -> {}", &inpath, &outpath);
 
     let tokens = lex_file(inpath)?;
-    let parsed = parse_file(&tokens)?;
+    let parsed = parse_tokens(&tokens)?;
     let mb = parsed.iter().map(|m| to_moonbase_str(m))
         .collect::<Vec<String>>().join("");
     generate_moonbase(&mb, outpath)?;
@@ -652,7 +662,8 @@ fn bar_lexing()
 #[test]
 fn repeat_lexing()
 {
-    lex_assert!(":|", Token::Repeat());
+    lex_assert!("[:", Token::Repeat(true));
+    lex_assert!(":]", Token::Repeat(false));
 }
 
 #[test]
@@ -727,14 +738,15 @@ macro_rules! assert_result
 #[test]
 fn compile_songs()
 {
-    assert_result!(compile("examples/batman.reg",     "/tmp/batman.wav"),     ());
-    assert_result!(compile("examples/campfire.reg",   "/tmp/campfire.wav"),   ());
-    assert_result!(compile("examples/choir_test.reg", "/tmp/choir_test.wav"), ());
-    assert_result!(compile("examples/dynamics.reg",   "/tmp/dynamics.wav"),   ());
-    assert_result!(compile("examples/hbjm.reg",       "/tmp/hbjm.wav"),       ());
-    assert_result!(compile("examples/regularity.reg", "/tmp/regularity.wav"), ());
-    assert_result!(compile("examples/scales.reg",     "/tmp/scales.wav"),     ());
-    assert_result!(compile("examples/mariah.reg",     "/tmp/mariah.wav"),     ());
+    std::fs::create_dir("rust_songs");
+    assert_result!(compile("examples/batman.reg",     "rust_songs/batman.wav"),     ());
+    assert_result!(compile("examples/campfire.reg",   "rust_songs/campfire.wav"),   ());
+    assert_result!(compile("examples/choir_test.reg", "rust_songs/choir_test.wav"), ());
+    assert_result!(compile("examples/dynamics.reg",   "rust_songs/dynamics.wav"),   ());
+    assert_result!(compile("examples/hbjm.reg",       "rust_songs/hbjm.wav"),       ());
+    assert_result!(compile("examples/regularity.reg", "rust_songs/regularity.wav"), ());
+    assert_result!(compile("examples/scales.reg",     "rust_songs/scales.wav"),     ());
+    assert_result!(compile("examples/mariah.reg",     "rust_songs/mariah.wav"),     ());
 
     assert_result!(compile(
         "examples/thelionsleepstonight.reg",
