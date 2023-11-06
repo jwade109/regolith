@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import os
 from glob import glob
 
@@ -6,7 +8,7 @@ reg_files = glob("examples/*.reg")
 os.makedirs("rust_songs", exist_ok=True)
 
 for reg in reg_files:
-    out = os.path.join("rust_songs", os.path.basename(reg).replace(".reg", ".mp3"))
+    out = os.path.join("rust_songs", os.path.basename(reg).replace(".reg", ".wav"))
     # if os.path.exists(out):
     #     rtime = os.path.getmtime(reg)
     #     otime = os.path.getmtime(out)

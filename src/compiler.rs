@@ -247,7 +247,7 @@ pub fn lex_literal(literal: &str) -> Result<Token>
     let repeat_token_re = regex!(r"^\:\|");
     let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
-    let track_token_re = regex!(r"^TRACK(\d+)$");
+    let track_token_re = regex!(r"^\[(\d+)\]$");
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
@@ -680,6 +680,16 @@ fn bpm_lexing()
 }
 
 #[test]
+fn track_lexing()
+{
+    lex_assert!("[0]",  Token::Track(0));
+    lex_assert!("[1]",  Token::Track(1));
+    lex_assert!("[2]",  Token::Track(2));
+    lex_assert!("[9]",  Token::Track(9));
+    lex_assert!("[12]", Token::Track(12));
+}
+
+#[test]
 fn dynamic_lexing()
 {
     lex_assert!("PIANISSIMO", Token::Dynamic(DynamicLevel::PIANISSIMO));
@@ -717,16 +727,16 @@ macro_rules! assert_result
 #[test]
 fn compile_songs()
 {
-    assert_result!(compile("examples/batman.reg",     "/tmp/batman.mp3"),     ());
-    assert_result!(compile("examples/campfire.reg",   "/tmp/campfire.mp3"),   ());
-    assert_result!(compile("examples/choir_test.reg", "/tmp/choir_test.mp3"), ());
-    assert_result!(compile("examples/dynamics.reg",   "/tmp/dynamics.mp3"),   ());
-    assert_result!(compile("examples/hbjm.reg",       "/tmp/hbjm.mp3"),       ());
-    assert_result!(compile("examples/regularity.reg", "/tmp/regularity.mp3"), ());
-    assert_result!(compile("examples/scales.reg",     "/tmp/scales.mp3"),     ());
-    assert_result!(compile("examples/mariah.reg",     "/tmp/mariah.mp3"),     ());
+    assert_result!(compile("examples/batman.reg",     "/tmp/batman.wav"),     ());
+    assert_result!(compile("examples/campfire.reg",   "/tmp/campfire.wav"),   ());
+    assert_result!(compile("examples/choir_test.reg", "/tmp/choir_test.wav"), ());
+    assert_result!(compile("examples/dynamics.reg",   "/tmp/dynamics.wav"),   ());
+    assert_result!(compile("examples/hbjm.reg",       "/tmp/hbjm.wav"),       ());
+    assert_result!(compile("examples/regularity.reg", "/tmp/regularity.wav"), ());
+    assert_result!(compile("examples/scales.reg",     "/tmp/scales.wav"),     ());
+    assert_result!(compile("examples/mariah.reg",     "/tmp/mariah.wav"),     ());
 
     assert_result!(compile(
         "examples/thelionsleepstonight.reg",
-        "/tmp/thelionsleepstonight.mp3"), ());
+        "/tmp/thelionsleepstonight.wav"), ());
 }

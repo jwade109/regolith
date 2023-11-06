@@ -9,7 +9,7 @@
 # Ti, a drink with jam and bread
 # That will bring us back to Do
 
-TRACK1
+[1]
 130BPM
 C dow -/2 D uh/2 E diy-r -/2 C uh/2 E fiy-m C ey-l E diy-r -                    @8
 D rey -/2 E uh/2 F druh/2 puh/2 E fguh/2 D ldeh/2 F nsuh-n:2 -:2                @16
@@ -21,7 +21,7 @@ B tiy -/2 E uh/2 F driy-nk/2 G wih-th/2 A jheh-m/2 B eh-nd/2 C3 breh-d:2 -:1
 B thah-t/2 A# wih-ll/2                                                          @56
 A brih-ng F uh-s B bah-k G tuw C3 dow -:3                                       @64
 
-# TRACK2
+# [2]
 # 160BPM
 # C duh E miy miy -
 # E miy G sow sow -
