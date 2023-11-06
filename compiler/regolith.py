@@ -1,6 +1,7 @@
+#! /usr/bin/env python3
+
 import urllib.parse
 import requests
-import asyncio
 import sys
 import re
 import os
@@ -500,6 +501,7 @@ def to_moonbase_sequences(track: ExportedTrack):
             current = ""
         current += mbstr
     if current:
+        print(current)
         ret.append(current)
     return ret
 

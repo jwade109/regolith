@@ -1,13 +1,13 @@
 #![allow(dead_code, unused)]
 
-use fraction::Fraction;
+use fraction::{Fraction, ToPrimitive};
 use std::fs::read_to_string;
 use regex::Regex;
 use regex_macro::regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::fs::File;
-use anyhow::{Result, Error, Context, bail};
+use anyhow::{Result, Context, bail};
 
 extern crate reqwest;
 
@@ -200,7 +200,7 @@ pub fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
     return Ok(result);
 }
 
-macro_rules! parse_rule
+macro_rules! lex_rule
 {
     ($lit: expr, $re: expr, $callable: expr) => {
         if let Some(caps) = $re.captures($lit)
@@ -237,10 +237,11 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
 
 pub fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
 {
-    return Ok(captures.get(i).context("Bad regex")?.clone().context("Bad regex")?.clone());
+    return Ok(captures.get(i).context("No nth element")?.clone()
+                             .context("Nth element is None")?.clone());
 }
 
-pub fn tokenize_literal(literal: &str) -> Result<Token>
+pub fn lex_literal(literal: &str) -> Result<Token>
 {
     let measure_bar_re = regex!(r"^\|");
     let repeat_token_re = regex!(r"^\:\|");
@@ -254,31 +255,26 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
     let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
 
-    parse_rule!(&literal, bpm_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, bpm_token_re, |cap: Vec<Option<String>>|
     {
-        let bpm : u16 = cap.get(1).context("Bad regex")?
-                         .as_ref().context("Bad regex")?
-                          .parse().context("Bad regex")?;
+        let bpm : u16 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
         return Ok(Token::Tempo(bpm));
     });
 
-    parse_rule!(&literal, track_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, track_token_re, |cap: Vec<Option<String>>|
     {
-        let idx : u8 = cap.get(1).context("Bad regex")?
-                        .as_ref().context("Bad regex")?
-                         .parse().context("Bad regex")?;
+        let idx : u8 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
         return Ok(Token::Track(idx));
     });
 
-    parse_rule!(&literal, pitch_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, pitch_token_re, |cap: Vec<Option<String>>|
     {
-        let s = cap.get(0).context("Bad regex")?
-                 .as_ref().context("Bad regex")?.clone();
-        let id = pitch_string_to_id(&s).context(format!("Bad pitch: `{}`", &s))?;
+        let s : String = get_nth_capture(&cap, 0)?;
+        let id : u8 = pitch_string_to_id(&s)?;
         return Ok(Token::AbsolutePitch(id));
     });
 
-    parse_rule!(&literal, note_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, note_token_re, |cap: Vec<Option<String>>|
     {
         let numer : u64 = match cap[4].as_ref()
         {
@@ -301,18 +297,18 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
         return Ok(Token::Note(n));
     });
 
-    parse_rule!(&literal, repeat_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, repeat_token_re, |cap: Vec<Option<String>>|
     {
         return Ok(Token::Repeat());
     });
 
-    parse_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
     {
         let beats : i32 = get_nth_capture(&cap, 1)?.parse().unwrap();
         return Ok(Token::BeatAssert(beats));
     });
 
-    parse_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
     {
         let pitch_str = get_nth_capture(&cap, 1)?;
         let tone_id = pitch_string_to_id(&pitch_str)?;
@@ -334,26 +330,24 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
         return Ok(Token::Scale(s));
     });
 
-    parse_rule!(&literal, dynamic_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, dynamic_decl_re, |cap: Vec<Option<String>>|
     {
         let level = parse_dynamic_level(cap[0].as_ref().unwrap());
         return Ok(Token::Dynamic(level.unwrap()));
     });
 
-    parse_rule!(&literal, scale_degree_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, scale_degree_re, |cap: Vec<Option<String>>|
     {
-        let deg : i32 = cap.get(1).context("Bad regex")?
-                         .as_ref().context("Bad regex")?
-                          .parse().context("Bad regex")?;
-        return Ok(Token::ScaleDegree(deg));
+        let d : i32 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
+        return Ok(Token::ScaleDegree(d));
     });
 
-    parse_rule!(&literal, measure_bar_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, measure_bar_re, |cap: Vec<Option<String>>|
     {
         return Ok(Token::MeasureBar());
     });
 
-    parse_rule!(&literal, rest_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, rest_decl_re, |cap: Vec<Option<String>>|
     {
         let numer : u64 = match cap[2].as_ref()
         {
@@ -369,7 +363,7 @@ pub fn tokenize_literal(literal: &str) -> Result<Token>
 
         let n = RegoNote
         {
-            prefix: "".to_string(),
+            prefix: "_".to_string(),
             suffix: "".to_string(),
             beats: Fraction::new(numer, denom)
         };
@@ -393,11 +387,43 @@ pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
         ms -= bias
     }
 
-    return format!("[{}<{},{}>{}]", mbn.prefix, ms, mbn.tone_id, mbn.suffix);
+    let mut prefix : &str = &mbn.prefix;
+    if prefix == "."
+    {
+        prefix = "duh";
+    }
+    if prefix == "the" // maybe will add more common words
+    {
+        prefix = "thuh";
+    }
+    if prefix == "o"
+    {
+        prefix = "ow";
+    }
+    if prefix == "a"
+    {
+        prefix = "ey";
+    }
+    if prefix == "and"
+    {
+        prefix = "ey-nd";
+    }
+    if prefix == "you"
+    {
+        prefix = "yu";
+    }
+    if prefix == "it"
+    {
+        prefix = "ih-t";
+    }
+
+    return format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix);
 }
 
-fn generate_moonbase(moonbase: &str, path: &Path) -> Result<()>
+fn generate_moonbase(moonbase: &str, outpath: &str) -> Result<()>
 {
+    println!("{}", &moonbase);
+    let path = Path::new(outpath);
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
     let bytes = reqwest::blocking::get(url)?.bytes()?;
     let mut file = File::create(&path)?;
@@ -409,9 +435,9 @@ fn generate_moonbase(moonbase: &str, path: &Path) -> Result<()>
 #[test]
 fn moonbase_gen()
 {
-    let r1 = generate_moonbase("[duw<500,19>] [duw<500,19>]", &Path::new("/tmp/result.wav"));
+    let r1 = generate_moonbase("[duw<500,19>] [duw<500,19>]", "/tmp/result.wav");
     assert!(r1.is_ok());
-    let r2 = generate_moonbase("wefwefw", &Path::new("/a/e/bvwefiqd/.qwee"));
+    let r2 = generate_moonbase("wefwefw", "/a/e/bvwefiqd/.qwee");
     assert!(r2.is_err());
 }
 
@@ -443,15 +469,58 @@ fn moonbase_strings()
     }));
 }
 
-pub fn read_tokens_from_file(inpath: &str) -> Result<Vec<Token>>
+pub fn lex_file(inpath: &str) -> Result<Vec<Token>>
 {
     let literals = read_literals_from_file(&inpath)?;
     let mut ret = vec![];
     for lit in literals
     {
-        let token = tokenize_literal(&lit.literal)?;
+        let token = lex_literal(&lit.literal)?;
         ret.push(token);
     }
+    return Ok(ret);
+}
+
+pub fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
+{
+    return Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32);
+}
+
+pub fn parse_file(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
+{
+    let mut current_bpm : u16 = 120;
+    let mut current_track = 0;
+    let mut current_pitch = pitch_string_to_id("C2")?;
+
+    let mut ret = vec![];
+
+    for t in tokens
+    {
+        match t
+        {
+            Token::Track(t) => current_track = *t,
+            Token::Tempo(bpm) => current_bpm = *bpm,
+            Token::AbsolutePitch(p) => current_pitch = *p,
+            Token::Note(n) =>
+            {
+                let mb = MoonbaseNote
+                {
+                    prefix: n.prefix.clone(),
+                    suffix: n.suffix.clone(),
+                    dur_ms: beats_to_millis(&n.beats, current_bpm).context("Bad fraction")?,
+                    tone_id: current_pitch
+                };
+                ret.push(mb);
+            }
+            Token::Repeat() => (),
+            Token::BeatAssert(b) => (),
+            Token::Scale(s) => (),
+            Token::ScaleDegree(d) => (),
+            Token::Dynamic(l) => (),
+            Token::MeasureBar() => ()
+        }
+    }
+
     return Ok(ret);
 }
 
@@ -459,21 +528,20 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 {
     println!("{} -> {}", &inpath, &outpath);
 
-    let tokens = read_tokens_from_file(inpath)?;
-
-    for t in tokens
-    {
-        // println!("{:?}", t);
-    }
+    let tokens = lex_file(inpath)?;
+    let parsed = parse_file(&tokens)?;
+    let mb = parsed.iter().map(|m| to_moonbase_str(m))
+        .collect::<Vec<String>>().join("");
+    generate_moonbase(&mb, outpath)?;
 
     return Ok(());
 }
 
-macro_rules! assert_tokenize
+macro_rules! lex_assert
 {
     ($string: expr, $expect: expr) =>
     {
-        match tokenize_literal($string)
+        match lex_literal($string)
         {
             Ok(result) => assert_eq!(result, $expect),
             Err(error) =>
@@ -486,9 +554,9 @@ macro_rules! assert_tokenize
 }
 
 #[test]
-fn note_parsing()
+fn note_lexing()
 {
-    assert_tokenize!("ih-s:3/2",
+    lex_assert!("ih-s:3/2",
     Token::Note(RegoNote
     {
         prefix: "ih".to_string(),
@@ -496,7 +564,7 @@ fn note_parsing()
         beats: Fraction::new(3u64, 2u64)
     }));
 
-    assert_tokenize!("uh-n/2",
+    lex_assert!("uh-n/2",
     Token::Note(RegoNote
     {
         prefix: "uh".to_string(),
@@ -504,7 +572,7 @@ fn note_parsing()
         beats: Fraction::new(1u64, 2u64)
     }));
 
-    assert_tokenize!("ne/3",
+    lex_assert!("ne/3",
     Token::Note(RegoNote
     {
         prefix: "ne".to_string(),
@@ -512,110 +580,122 @@ fn note_parsing()
         beats: Fraction::new(1u64, 3u64)
     }));
 
-    assert_tokenize!("-:12",
+    lex_assert!("-:12",
     Token::Note(RegoNote
     {
-        prefix: "".to_string(),
+        prefix: "_".to_string(),
         suffix: "".to_string(),
         beats: Fraction::new(12u64, 1u64)
     }));
 }
 
 #[test]
-fn absolute_pitch_parsing()
+fn absolute_pitch_lexing()
 {
-    assert_tokenize!("C", Token::AbsolutePitch(13));
-    assert_tokenize!("D", Token::AbsolutePitch(15));
-    assert_tokenize!("E", Token::AbsolutePitch(17));
+    lex_assert!("C", Token::AbsolutePitch(13));
+    lex_assert!("D", Token::AbsolutePitch(15));
+    lex_assert!("E", Token::AbsolutePitch(17));
 }
 
 #[test]
-fn scale_parsing()
+fn relative_pitch_lexing()
 {
-    assert_tokenize!("CMAJOR", Token::Scale(Scale
+    lex_assert!("1", Token::ScaleDegree(1));
+    lex_assert!("2", Token::ScaleDegree(2));
+    lex_assert!("5", Token::ScaleDegree(5));
+    lex_assert!("13", Token::ScaleDegree(13));
+
+    assert!(lex_literal("-4").is_err());
+    assert!(lex_literal("352d").is_err());
+}
+
+#[test]
+fn scale_lexing()
+{
+    lex_assert!("CMAJOR", Token::Scale(Scale
     {
         tone_id: 13,
         steps: vec![2, 2, 1, 2, 2, 2, 1]
     }));
 
-    assert_tokenize!("AMINOR", Token::Scale(Scale
+    lex_assert!("AMINOR", Token::Scale(Scale
     {
         tone_id: 10,
         steps: vec![2, 1, 2, 2, 1, 2, 2]
     }));
 
-    assert_tokenize!("G#PENTA", Token::Scale(Scale
+    lex_assert!("G#PENTA", Token::Scale(Scale
     {
         tone_id: 21,
         steps: vec![2, 2, 3, 2, 3]
     }));
 
-    assert_tokenize!("D3#CHROM", Token::Scale(Scale
+    lex_assert!("D3#CHROM", Token::Scale(Scale
     {
         tone_id: 28,
         steps: vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     }));
 
     // no brackets
-    assert!(tokenize_literal("Fb3").is_err());
+    assert!(lex_literal("Fb3").is_err());
 
     // bad pitch
-    assert!(tokenize_literal("K4[22211]").is_err());
+    assert!(lex_literal("K4[22211]").is_err());
 }
 
 #[test]
-fn bar_parsing()
+fn bar_lexing()
 {
-    assert_tokenize!("|", Token::MeasureBar());
+    lex_assert!("|", Token::MeasureBar());
 }
 
 #[test]
-fn repeat_parsing()
+fn repeat_lexing()
 {
-    assert_tokenize!(":|", Token::Repeat());
+    lex_assert!(":|", Token::Repeat());
 }
 
 #[test]
-fn beats_assert_parsing()
+fn beats_assert_lexing()
 {
-    assert_tokenize!("@16",   Token::BeatAssert(16));
-    assert_tokenize!("@32",   Token::BeatAssert(32));
-    assert_tokenize!("@27",   Token::BeatAssert(27));
-    assert_tokenize!("@0",    Token::BeatAssert(0));
-    assert_tokenize!("@2452", Token::BeatAssert(2452));
-    assert!(tokenize_literal("@-3").is_err());
+    lex_assert!("@16",   Token::BeatAssert(16));
+    lex_assert!("@32",   Token::BeatAssert(32));
+    lex_assert!("@27",   Token::BeatAssert(27));
+    lex_assert!("@0",    Token::BeatAssert(0));
+    lex_assert!("@2452", Token::BeatAssert(2452));
+    assert!(lex_literal("@-3").is_err());
 }
 
 #[test]
-fn bpm_parsing()
+fn bpm_lexing()
 {
-    assert_tokenize!("120BPM",  Token::Tempo(120));
-    assert_tokenize!("92BPM",   Token::Tempo(92));
-    assert_tokenize!("1103BPM", Token::Tempo(1103));
-    assert_tokenize!("0BPM",    Token::Tempo(0));
+    lex_assert!("120BPM",  Token::Tempo(120));
+    lex_assert!("92BPM",   Token::Tempo(92));
+    lex_assert!("1103BPM", Token::Tempo(1103));
+    lex_assert!("0BPM",    Token::Tempo(0));
 
-    assert!(tokenize_literal("-12BPM").is_err());
-    assert!(tokenize_literal("CHEESEBPM").is_err());
-    assert!(tokenize_literal("--BPM").is_err());
+    assert!(lex_literal("-12BPM").is_err());
+    assert!(lex_literal("CHEESEBPM").is_err());
+    assert!(lex_literal("--BPM").is_err());
 }
 
 #[test]
-fn dynamic_parsing()
+fn dynamic_lexing()
 {
-    assert_tokenize!("PIANISSIMO", Token::Dynamic(DynamicLevel::PIANISSIMO));
-    assert_tokenize!("PIANO",      Token::Dynamic(DynamicLevel::PIANO));
-    assert_tokenize!("MEZZOPIANO", Token::Dynamic(DynamicLevel::MEZZOPIANO));
-    assert_tokenize!("MEZZOFORTE", Token::Dynamic(DynamicLevel::MEZZOFORTE));
-    assert_tokenize!("FORTE",      Token::Dynamic(DynamicLevel::FORTE));
-    assert_tokenize!("FORTISSIMO", Token::Dynamic(DynamicLevel::FORTISSIMO));
+    lex_assert!("PIANISSIMO", Token::Dynamic(DynamicLevel::PIANISSIMO));
+    lex_assert!("PIANO",      Token::Dynamic(DynamicLevel::PIANO));
+    lex_assert!("MEZZOPIANO", Token::Dynamic(DynamicLevel::MEZZOPIANO));
+    lex_assert!("MEZZOFORTE", Token::Dynamic(DynamicLevel::MEZZOFORTE));
+    lex_assert!("FORTE",      Token::Dynamic(DynamicLevel::FORTE));
+    lex_assert!("FORTISSIMO", Token::Dynamic(DynamicLevel::FORTISSIMO));
 }
 
 #[test]
-fn garbage_parsing()
+fn garbage_lexing()
 {
-    assert!(tokenize_literal("wefwe$234").is_err());
-    assert!(tokenize_literal("dddFd").is_err());
-    assert!(tokenize_literal("...--").is_err());
+    assert!(lex_literal("wefwe$234").is_err());
+    assert!(lex_literal("dddFd").is_err());
+    assert!(lex_literal("...--").is_err());
 }
 
 macro_rules! assert_result
@@ -641,6 +721,12 @@ fn compile_songs()
     assert_result!(compile("examples/campfire.reg",   "/tmp/campfire.mp3"),   ());
     assert_result!(compile("examples/choir_test.reg", "/tmp/choir_test.mp3"), ());
     assert_result!(compile("examples/dynamics.reg",   "/tmp/dynamics.mp3"),   ());
+    assert_result!(compile("examples/hbjm.reg",       "/tmp/hbjm.mp3"),       ());
+    assert_result!(compile("examples/regularity.reg", "/tmp/regularity.mp3"), ());
     assert_result!(compile("examples/scales.reg",     "/tmp/scales.mp3"),     ());
     assert_result!(compile("examples/mariah.reg",     "/tmp/mariah.mp3"),     ());
+
+    assert_result!(compile(
+        "examples/thelionsleepstonight.reg",
+        "/tmp/thelionsleepstonight.mp3"), ());
 }
