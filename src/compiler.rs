@@ -70,7 +70,7 @@ pub fn pitch_string_to_id(pitch: &str) -> Result<u8>
 {
     let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)
         .context(format!("Bad pitch string: `{}`", pitch))?;
-    return Ok(*i);
+    Ok(*i)
 }
 
 #[test]
@@ -98,7 +98,7 @@ pub fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
 {
     let (n, s) = NAMED_SCALE_MAP.iter().find(|(n, s)| *n == scale)?;
     let v : Vec<u8> = s.iter().cloned().filter(|x| *x > 0u8).collect::<Vec<_>>();
-    return Some(v);
+    Some(v)
 }
 
 #[test]
@@ -177,11 +177,11 @@ pub fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
 
     for (lineno, line) in read_to_string(filename)?.lines().enumerate()
     {
-        if line.is_empty() || line.starts_with("#")
+        if line.is_empty() || line.starts_with('#')
         {
             continue;
         }
-        for c in line.to_string().split(" ")
+        for c in line.to_string().split(' ')
         {
             if !c.is_empty()
             {
@@ -189,7 +189,7 @@ pub fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
                 {
                     colno: 0,
                     filename: filename.to_string(),
-                    lineno: lineno,
+                    lineno,
                     literal: c.to_string()
                 };
                 result.push(l);
@@ -197,7 +197,7 @@ pub fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
         }
     }
 
-    return Ok(result);
+    Ok(result)
 }
 
 macro_rules! lex_rule
@@ -223,7 +223,7 @@ macro_rules! lex_rule
 
 fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
 {
-    return match level
+    match level
     {
         "PIANISSIMO" => Some(DynamicLevel::PIANISSIMO),
         "PIANO"      => Some(DynamicLevel::PIANO),
@@ -232,13 +232,13 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
         "FORTE"      => Some(DynamicLevel::FORTE),
         "FORTISSIMO" => Some(DynamicLevel::FORTISSIMO),
         _            => None
-    };
+    }
 }
 
 pub fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
 {
-    return Ok(captures.get(i).context("No nth element")?.clone()
-                             .context("Nth element is None")?.clone());
+    Ok(captures.get(i).context("No nth element")?.clone()
+                             .context("Nth element is None")?.clone())
 }
 
 pub fn lex_literal(literal: &str) -> Result<Token>
@@ -259,20 +259,20 @@ pub fn lex_literal(literal: &str) -> Result<Token>
     lex_rule!(&literal, bpm_token_re, |cap: Vec<Option<String>>|
     {
         let bpm : u16 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
-        return Ok(Token::Tempo(bpm));
+        Ok(Token::Tempo(bpm))
     });
 
     lex_rule!(&literal, track_token_re, |cap: Vec<Option<String>>|
     {
         let idx : u8 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
-        return Ok(Token::Track(idx));
+        Ok(Token::Track(idx))
     });
 
     lex_rule!(&literal, pitch_token_re, |cap: Vec<Option<String>>|
     {
         let s : String = get_nth_capture(&cap, 0)?;
         let id : u8 = pitch_string_to_id(&s)?;
-        return Ok(Token::AbsolutePitch(id));
+        Ok(Token::AbsolutePitch(id))
     });
 
     lex_rule!(&literal, note_token_re, |cap: Vec<Option<String>>|
@@ -295,23 +295,23 @@ pub fn lex_literal(literal: &str) -> Result<Token>
             suffix: cap[2].as_ref().unwrap_or(&"".to_string()).clone(),
             beats: Fraction::new(numer, denom)
         };
-        return Ok(Token::Note(n));
+        Ok(Token::Note(n))
     });
 
     lex_rule!(&literal, start_repeat_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::Repeat(true));
+        Ok(Token::Repeat(true))
     });
 
     lex_rule!(&literal, stop_repeat_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::Repeat(false));
+        Ok(Token::Repeat(false))
     });
 
     lex_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
     {
         let beats : i32 = get_nth_capture(&cap, 1)?.parse().unwrap();
-        return Ok(Token::BeatAssert(beats));
+        Ok(Token::BeatAssert(beats))
     });
 
     lex_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
@@ -329,28 +329,28 @@ pub fn lex_literal(literal: &str) -> Result<Token>
 
         let s = Scale
         {
-            tone_id: tone_id,
-            steps: steps
+            tone_id,
+            steps
         };
 
-        return Ok(Token::Scale(s));
+        Ok(Token::Scale(s))
     });
 
     lex_rule!(&literal, dynamic_decl_re, |cap: Vec<Option<String>>|
     {
         let level = parse_dynamic_level(cap[0].as_ref().unwrap());
-        return Ok(Token::Dynamic(level.unwrap()));
+        Ok(Token::Dynamic(level.unwrap()))
     });
 
     lex_rule!(&literal, scale_degree_re, |cap: Vec<Option<String>>|
     {
         let d : i32 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
-        return Ok(Token::ScaleDegree(d));
+        Ok(Token::ScaleDegree(d))
     });
 
     lex_rule!(&literal, measure_bar_re, |cap: Vec<Option<String>>|
     {
-        return Ok(Token::MeasureBar());
+        Ok(Token::MeasureBar())
     });
 
     lex_rule!(&literal, rest_decl_re, |cap: Vec<Option<String>>|
@@ -374,7 +374,7 @@ pub fn lex_literal(literal: &str) -> Result<Token>
             beats: Fraction::new(numer, denom)
         };
 
-        return Ok(Token::Note(n));
+        Ok(Token::Note(n))
     });
 
     bail!("No rule to lex symbol `{}`", &literal);
@@ -423,17 +423,17 @@ pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
         prefix = "ih-t";
     }
 
-    return format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix);
+    format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix)
 }
 
 fn generate_moonbase(moonbase: &str, outpath: &str) -> Result<()>
 {
-    let mut file = File::create(&Path::new(outpath))?;
+    let mut file = File::create(Path::new(outpath))?;
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
     let bytes = reqwest::blocking::get(url)?.bytes()?;
     use std::io::Write;
     file.write_all(&bytes)?;
-    return Ok(());
+    Ok(())
 }
 
 #[test]
@@ -475,19 +475,19 @@ fn moonbase_strings()
 
 pub fn lex_file(inpath: &str) -> Result<Vec<Token>>
 {
-    let literals = read_literals_from_file(&inpath)?;
+    let literals = read_literals_from_file(inpath)?;
     let mut ret = vec![];
     for lit in literals
     {
         let token = lex_literal(&lit.literal)?;
         ret.push(token);
     }
-    return Ok(ret);
+    Ok(ret)
 }
 
 pub fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
 {
-    return Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32);
+    Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
 }
 
 pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
@@ -531,7 +531,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
         }
     }
 
-    return Ok(ret);
+    Ok(ret)
 }
 
 pub fn compile(inpath: &str, outpath: &str) -> Result<()>
@@ -540,11 +540,11 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 
     let tokens = lex_file(inpath)?;
     let parsed = parse_tokens(&tokens)?;
-    let mb = parsed.iter().map(|m| to_moonbase_str(m))
+    let mb = parsed.iter().map(to_moonbase_str)
         .collect::<Vec<String>>().join("");
     generate_moonbase(&mb, outpath)?;
 
-    return Ok(());
+    Ok(())
 }
 
 macro_rules! lex_assert

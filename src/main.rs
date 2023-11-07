@@ -34,5 +34,5 @@ fn main() -> anyhow::Result<()>
 
     println!("Finished with no errors.");
 
-    return Ok(());
+    Ok(())
 }
