@@ -2,16 +2,12 @@
 
 use std::env;
 use anyhow::Result;
-
-pub mod lexer;
-pub mod compiler;
-
-use crate::lexer::*;
-use crate::compiler::*;
-
-extern crate argparse;
-
 use argparse::{ArgumentParser, StoreTrue, Store};
+use crate::compiler::compile;
+
+mod lexer;
+mod compiler;
+mod moonbase;
 
 fn main() -> anyhow::Result<()>
 {

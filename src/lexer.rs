@@ -5,12 +5,11 @@ use regex::Regex;
 use fraction::{Fraction, ToPrimitive};
 use regex_macro::regex;
 use std::collections::HashMap;
-use std::path::Path;
-use std::fs::File;
 use anyhow::{Result, Context, bail};
 use md5;
 
-extern crate reqwest;
+use crate::moonbase::MoonbaseNote;
+use crate::compiler::Sequence;
 
 static PITCH_MAP : [(&str, u8); 49] =
 [
@@ -67,7 +66,7 @@ static PITCH_MAP : [(&str, u8); 49] =
     ("C4" , 37)
 ];
 
-pub fn pitch_string_to_id(pitch: &str) -> Result<u8>
+fn pitch_string_to_id(pitch: &str) -> Result<u8>
 {
     let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)
         .context(format!("Bad pitch string: `{}`", pitch))?;
@@ -95,7 +94,7 @@ static NAMED_SCALE_MAP : [(&str, &[u8; 12]); 4] =
     ("CHROM", &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
 ];
 
-pub fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
+fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
 {
     let (n, s) = NAMED_SCALE_MAP.iter().find(|(n, s)| *n == scale)?;
     let v : Vec<u8> = s.iter().cloned().filter(|x| *x > 0u8).collect::<Vec<_>>();
@@ -131,15 +130,6 @@ pub struct RegoNote
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct MoonbaseNote
-{
-    prefix: String,
-    suffix: String,
-    dur_ms: i32,
-    tone_id: u8
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum DynamicLevel
 {
     PIANISSIMO,
@@ -172,7 +162,7 @@ pub enum Token
     MeasureBar()
 }
 
-pub fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
+fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
 {
     let mut result = Vec::new();
 
@@ -236,13 +226,13 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
     }
 }
 
-pub fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
+fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
 {
     Ok(captures.get(i).context("No nth element")?.clone()
                              .context("Nth element is None")?.clone())
 }
 
-pub fn lex_literal(literal: &str) -> Result<Token>
+fn lex_literal(literal: &str) -> Result<Token>
 {
     let measure_bar_re = regex!(r"^\|");
     let start_repeat_re = regex!(r"^\[:");
@@ -381,125 +371,6 @@ pub fn lex_literal(literal: &str) -> Result<Token>
     bail!("No rule to lex symbol `{}`", &literal);
 }
 
-pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
-{
-    // the TTS engine adds about 4 seconds worth of audio for every 60
-    // notes, regardless of BPM; 4000 ms / 60 notes ~= 67 ms per note.
-    // however this doesn't apply to rests.
-
-    let bias = 67;
-    let mut ms = mbn.dur_ms;
-    if mbn.prefix != "_" && mbn.dur_ms > bias
-    {
-        ms -= bias
-    }
-
-    let mut prefix : &str = &mbn.prefix;
-    if prefix == "."
-    {
-        prefix = "duh";
-    }
-    if prefix == "the" // maybe will add more common words
-    {
-        prefix = "thuh";
-    }
-    if prefix == "o"
-    {
-        prefix = "ow";
-    }
-    if prefix == "a"
-    {
-        prefix = "ey";
-    }
-    if prefix == "and"
-    {
-        prefix = "ey-nd";
-    }
-    if prefix == "you"
-    {
-        prefix = "yu";
-    }
-    if prefix == "it"
-    {
-        prefix = "ih-t";
-    }
-
-    format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix)
-}
-
-fn hashed_fn(arg: &str, ext: &str) -> Result<String>
-{
-    let digest = md5::compute(arg);
-    Ok(format!("/tmp/{:x}.{}", digest, ext))
-}
-
-#[test]
-fn moonbase_string_hashing()
-{
-    assert_eq!(
-        hashed_fn("ewjwef", "wav").ok(),
-        Some("/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string())
-    );
-}
-
-pub fn generate_moonbase(moonbase: &str) -> Result<String>
-{
-    let mut outpath = hashed_fn(&moonbase, "wav")?;
-    let path = Path::new(&outpath);
-    if !path.exists()
-    {
-        let mut file = File::create(&path)?;
-        let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
-        let resp = reqwest::blocking::get(url)?;
-        resp.error_for_status_ref()?;
-        use std::io::Write;
-        file.write_all(&resp.bytes()?)?;
-    }
-    Ok(outpath)
-}
-
-#[test]
-fn moonbase_gen()
-{
-    assert_eq!(
-        generate_moonbase("[duw<500,19>] [duw<500,19>]").ok(),
-        Some("/tmp/0f4ed7068d8362b1c2dafa2baea51b5d.wav".to_string())
-    );
-
-    assert_eq!(
-        generate_moonbase("wefwefw").ok(),
-        Some("/tmp/37e838885e9fd07692e5da83e515878e.wav".to_string())
-    );
-}
-
-#[test]
-fn moonbase_strings()
-{
-    assert_eq!("[duw<40,19>]", to_moonbase_str(&MoonbaseNote
-    {
-        prefix: "duw".to_string(),
-        suffix: "".to_string(),
-        dur_ms: 40,
-        tone_id: 19
-    }));
-
-    assert_eq!("[du<53,10>th]", to_moonbase_str(&MoonbaseNote
-    {
-        prefix: "du".to_string(),
-        suffix: "th".to_string(),
-        dur_ms: 120,
-        tone_id: 10
-    }));
-
-    assert_eq!("[uh<26,28>wf]", to_moonbase_str(&MoonbaseNote
-    {
-        prefix: "uh".to_string(),
-        suffix: "wf".to_string(),
-        dur_ms: 93,
-        tone_id: 28
-    }));
-}
-
 pub fn lex_file(inpath: &str) -> Result<Vec<Token>>
 {
     let literals = read_literals_from_file(inpath)?;
@@ -512,16 +383,9 @@ pub fn lex_file(inpath: &str) -> Result<Vec<Token>>
     Ok(ret)
 }
 
-pub fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
+fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
 {
     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
-}
-
-#[derive(Debug)]
-pub struct Sequence
-{
-    id: u8,
-    notes: Vec<MoonbaseNote>
 }
 
 pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<Sequence>>
@@ -740,15 +604,4 @@ fn garbage_lexing()
     assert!(lex_literal("wefwe$234").is_err());
     assert!(lex_literal("dddFd").is_err());
     assert!(lex_literal("...--").is_err());
-}
-
-pub fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
-{
-    for seq in sequences
-    {
-        let mb = seq.notes.iter().map(to_moonbase_str)
-            .collect::<Vec<String>>().join("");
-        generate_moonbase(&mb)?;
-    }
-    Ok(())
 }
