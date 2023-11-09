@@ -3,8 +3,10 @@
 use std::env;
 use anyhow::Result;
 
+pub mod lexer;
 pub mod compiler;
 
+use crate::lexer::*;
 use crate::compiler::*;
 
 extern crate argparse;
