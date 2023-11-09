@@ -1,13 +1,14 @@
 #![allow(dead_code, unused)]
 
-use fraction::{Fraction, ToPrimitive};
 use std::fs::read_to_string;
 use regex::Regex;
+use fraction::{Fraction, ToPrimitive};
 use regex_macro::regex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::fs::File;
 use anyhow::{Result, Context, bail};
+use md5;
 
 extern crate reqwest;
 
@@ -426,23 +427,55 @@ pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
     format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix)
 }
 
-fn generate_moonbase(moonbase: &str, outpath: &str) -> Result<()>
+fn hashed_fn(arg: &str, ext: &str) -> Result<String>
 {
-    let mut file = File::create(Path::new(outpath))?;
+    let digest = md5::compute(arg);
+    Ok(format!("/tmp/{:x}.{}", digest, ext))
+}
+
+#[test]
+fn moonbase_string_hashing()
+{
+    assert_eq!(
+        hashed_fn("ewjwef", "wav").ok(),
+        Some("/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string())
+    );
+}
+
+fn generate_moonbase_network(moonbase: &str, path: &Path) -> Result<()>
+{
+    let mut file = File::create(&path)?;
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
-    let bytes = reqwest::blocking::get(url)?.bytes()?;
+    let resp = reqwest::blocking::get(url)?;
+    resp.error_for_status_ref()?;
     use std::io::Write;
-    file.write_all(&bytes)?;
+    file.write_all(&resp.bytes()?)?;
     Ok(())
+}
+
+fn generate_moonbase(moonbase: &str) -> Result<String>
+{
+    let mut outpath = hashed_fn(&moonbase, "wav")?;
+    let path = Path::new(&outpath);
+    if !path.exists()
+    {
+        generate_moonbase_network(&moonbase, &path)?;
+    }
+    Ok(outpath)
 }
 
 #[test]
 fn moonbase_gen()
 {
-    let r1 = generate_moonbase("[duw<500,19>] [duw<500,19>]", "/tmp/result.wav");
-    assert!(r1.is_ok());
-    let r2 = generate_moonbase("wefwefw", "/a/e/bvwefiqd/.qwee");
-    assert!(r2.is_err());
+    assert_eq!(
+        generate_moonbase("[duw<500,19>] [duw<500,19>]").ok(),
+        Some("/tmp/0f4ed7068d8362b1c2dafa2baea51b5d.wav".to_string())
+    );
+
+    assert_eq!(
+        generate_moonbase("wefwefw").ok(),
+        Some("/tmp/37e838885e9fd07692e5da83e515878e.wav".to_string())
+    );
 }
 
 #[test]
@@ -490,7 +523,14 @@ pub fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
 }
 
-pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
+#[derive(Debug)]
+pub struct Sequence
+{
+    id: u8,
+    notes: Vec<MoonbaseNote>
+}
+
+pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<Sequence>>
 {
     let mut current_bpm : u16 = 120;
     let mut current_track : u8 = 0;
@@ -501,7 +541,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
         steps: get_named_scale_steps("MAJOR").context("Bad default scale")?
     };
 
-    let mut ret = vec![];
+    let mut tracks : HashMap<u8, Sequence> = HashMap::new();
 
     for t in tokens
     {
@@ -520,7 +560,9 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
                     tone_id: current_pitch
                 };
 
-                ret.push(mb);
+                let mut seq = tracks.entry(current_track)
+                    .or_insert(Sequence { id: current_track, notes: vec![] });
+                seq.notes.push(mb);
             }
             Token::Repeat(b) => (),
             Token::BeatAssert(b) => (),
@@ -531,7 +573,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<MoonbaseNote>>
         }
     }
 
-    Ok(ret)
+    Ok(tracks.into_values().collect())
 }
 
 pub fn compile(inpath: &str, outpath: &str) -> Result<()>
@@ -540,9 +582,13 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 
     let tokens = lex_file(inpath)?;
     let parsed = parse_tokens(&tokens)?;
-    let mb = parsed.iter().map(to_moonbase_str)
-        .collect::<Vec<String>>().join("");
-    generate_moonbase(&mb, outpath)?;
+    for seq in parsed
+    {
+        let mb = seq.notes.iter().map(to_moonbase_str)
+            .collect::<Vec<String>>().join("");
+        println!("{}", &mb);
+        let path = generate_moonbase(&mb)?;
+    }
 
     Ok(())
 }
