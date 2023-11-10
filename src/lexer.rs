@@ -207,6 +207,7 @@ macro_rules! lex_rule
     }
 }
 
+#[allow(unused_macros)]
 macro_rules! lex_assert
 {
     ($string: expr, $expect: expr) =>
@@ -271,19 +272,19 @@ fn lex_literal(literal: &str) -> Result<Token>
 
     lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
     {
-        let bpm : u16 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
+        let bpm : u16 = get_nth_capture(cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::Tempo(bpm))
     });
 
     lex_rule!(&literal, track_token_re, |cap: &[Option<String>]|
     {
-        let idx : u8 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
+        let idx : u8 = get_nth_capture(cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::Track(idx))
     });
 
     lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
     {
-        let s : String = get_nth_capture(&cap, 0)?;
+        let s : String = get_nth_capture(cap, 0)?;
         let id : u8 = pitch_string_to_id(&s)?;
         Ok(Token::AbsolutePitch(id))
     });
@@ -323,13 +324,13 @@ fn lex_literal(literal: &str) -> Result<Token>
 
     lex_rule!(&literal, beat_assert_re, |cap: &[Option<String>]|
     {
-        let beats : i32 = get_nth_capture(&cap, 1)?.parse().unwrap();
+        let beats : i32 = get_nth_capture(cap, 1)?.parse().unwrap();
         Ok(Token::BeatAssert(beats))
     });
 
     lex_rule!(&literal, scale_decl_re, |cap: &[Option<String>]|
     {
-        let pitch_str = get_nth_capture(&cap, 1)?;
+        let pitch_str = get_nth_capture(cap, 1)?;
         let tone_id = pitch_string_to_id(&pitch_str)?;
         let steps : Vec<u8> = if let Some(numbers) = cap.get(3).context("Bad regex")?
         {
@@ -337,7 +338,7 @@ fn lex_literal(literal: &str) -> Result<Token>
         }
         else
         {
-            get_named_scale_steps(&get_nth_capture(&cap, 2)?).context("Bad regex")?
+            get_named_scale_steps(&get_nth_capture(cap, 2)?).context("Bad regex")?
         };
 
         let s = Scale
@@ -357,7 +358,7 @@ fn lex_literal(literal: &str) -> Result<Token>
 
     lex_rule!(&literal, scale_degree_re, |cap: &[Option<String>]|
     {
-        let d : i32 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
+        let d : i32 = get_nth_capture(cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::ScaleDegree(d))
     });
 

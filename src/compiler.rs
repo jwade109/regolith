@@ -30,6 +30,7 @@ pub fn compile(inpath: &str, outpath: &str) -> Result<()>
     Ok(())
 }
 
+#[allow(unused_macros)]
 macro_rules! assert_result
 {
     ($to_test: expr, $on_ok: expr) =>
