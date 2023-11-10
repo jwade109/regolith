@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use fraction::{Fraction, ToPrimitive};
-use anyhow::Context;
+use anyhow::bail;
 
 use crate::lexer::*;
 use crate::moonbase::{to_moonbase_str, MoonbaseNote, generate_moonbase};
@@ -17,7 +17,22 @@ struct Sequence
 pub struct Section
 {
     name: String,
-    tokens: Vec<Token>
+    tracks: Vec<Track>
+}
+
+#[derive(Debug)]
+pub struct Track
+{
+    name: String,
+    measures: Vec<Vec<Token>>
+}
+
+impl Track
+{
+    fn beats(&self) -> Fraction
+    {
+        self.measures.iter().map(|m| count_beats(m)).sum()
+    }
 }
 
 fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
@@ -63,60 +78,42 @@ fn how_many_beats_are_there()
 
 pub fn parse_tokens(tokens: &Vec<(Literal, Token)>) -> Result<Vec<Section>>
 {
-    let mut sections = vec![];
+    let just_tokens : Vec<Token> = tokens.iter().map(|(l, t)| t.clone()).collect();
 
-    let mut current = Section { name: "".to_string(), tokens: vec![] };
-
-    for (i, (_, t)) in tokens.iter().enumerate()
+    let sections : Vec<Section> = split_by_section(&just_tokens).iter().map(|(sn, st)|
     {
-        if let Token::Section(name) = t
+        Section
         {
-            if !current.tokens.is_empty()
+            name: sn.to_string(),
+            tracks: split_by_track(&st).iter().map(|(n, t)|
             {
-                sections.push(current);
-            }
-            current = Section { name: name.to_string(), tokens: vec![] };
-        }
-
-        match t
-        {
-            Token::Section(_) => (),
-            _ =>
-            {
-                current.tokens.push(t.clone());
-            }
-        }
-    }
-
-    if !current.tokens.is_empty()
-    {
-        sections.push(current);
-    }
-
-
-    for (i, section) in sections.iter().enumerate()
-    {
-        println!("Section {}: {:?}", i, section.name);
-
-        let tracks = split_by_track(&section.tokens);
-
-        for (k, v) in tracks
-        {
-            println!("  Track {:?}", k);
-            let measures = split_by_measure(&v);
-            for m in measures
-            {
-                let beats = count_beats(&m);
-                println!("   --- ({:?})", beats);
-                for t in m
+                Track
                 {
-                    println!("     {:?}", t);
+                    name: n.to_string(),
+                    measures: split_by_measure(&t).into_iter().collect()
+                }
+            }).collect()
+        }
+    }).collect();
+
+    for section in &sections
+    {
+        println!("SECTION `{}`", section.name);
+        for track in &section.tracks
+        {
+            println!(" TRACK `{}`", track.name);
+            for measure in &track.measures
+            {
+                println!("     ~");
+                for token in measure.iter()
+                {
+                    println!("    {:?}", token);
                 }
             }
         }
     }
 
-    Ok(sections)
+    Ok(vec![])
 }
 
 fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
@@ -151,11 +148,15 @@ fn split_by_measure(tokens: &[Token]) -> Vec<Vec<Token>>
             current_measure.push(token.clone());
         }
     }
+    if !current_measure.is_empty()
+    {
+        measures.push(current_measure);
+    }
 
-    return measures;
+    return measures.into_iter().filter(|m| !m.is_empty()).collect();
 }
 
-fn split_by_track(tokens: &[Token]) -> HashMap<String, Vec<Token>>
+fn split_by_track(tokens: &[Token]) -> Vec<(String, Vec<Token>)>
 {
     let mut tracks : HashMap<String, Vec<Token>> = HashMap::new();
 
@@ -174,15 +175,44 @@ fn split_by_track(tokens: &[Token]) -> HashMap<String, Vec<Token>>
         }
     }
 
-    tracks
+    tracks.into_iter().filter(|(n, t)| !t.is_empty()).collect()
+}
+
+fn split_by_section(tokens: &[Token]) -> Vec<(String, Vec<Token>)>
+{
+    let mut sections = vec![];
+
+    let mut sname = String::new();
+    let mut stok = vec![];
+
+    for token in tokens
+    {
+        if let Token::Section(name) = token
+        {
+            if !stok.is_empty()
+            {
+                sections.push((sname, stok.clone()));
+                stok.clear();
+            }
+            sname = name.to_string();
+        }
+        else
+        {
+            stok.push(token.clone());
+        }
+    }
+    if !stok.is_empty()
+    {
+        sections.push((sname, stok))
+    }
+
+    sections.into_iter().filter(|(n, t)| !t.is_empty()).collect()
 }
 
 pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 {
     let tokens = lex_file(inpath)?;
     let sections = parse_tokens(&tokens)?;
-
-    // generate_from_sequences(&sequences)?;
     Ok(())
 }
 
