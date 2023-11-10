@@ -16,14 +16,13 @@ fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
     {
         let mb = seq.notes.iter().map(to_moonbase_str)
             .collect::<Vec<String>>().join("");
-        generate_moonbase(&mb)?;
+        let _path = generate_moonbase(&mb)?;
     }
     Ok(())
 }
 
 pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 {
-    println!("{} -> {}", &inpath, &outpath);
     let tokens = lex_file(inpath)?;
     let sequences = parse_tokens(&tokens)?;
     generate_from_sequences(&sequences)?;

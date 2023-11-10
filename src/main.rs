@@ -22,6 +22,7 @@ fn main() -> anyhow::Result<()>
         ap.parse_args_or_exit();
     }
 
+    println!("{} -> {}", &inpath, &outpath);
     compile(&inpath, &outpath)?;
 
     println!("Finished with no errors.");

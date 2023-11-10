@@ -116,11 +116,11 @@ pub fn generate_moonbase(moonbase: &str) -> Result<String>
     let path = Path::new(&outpath);
     if !path.exists()
     {
-        let mut file = File::create(path)?;
         let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
         let resp = reqwest::blocking::get(url)?;
         resp.error_for_status_ref()?;
         use std::io::Write;
+        let mut file = File::create(path)?;
         file.write_all(&resp.bytes()?)?;
     }
     Ok(outpath)
