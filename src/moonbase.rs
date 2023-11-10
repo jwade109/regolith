@@ -1,6 +1,8 @@
 use anyhow::Result;
 use std::fs::File;
 use std::path::Path;
+use std::time::Duration;
+use anyhow::bail;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MoonbaseNote
@@ -112,18 +114,34 @@ fn moonbase_strings()
 
 pub fn generate_moonbase(moonbase: &str) -> Result<String>
 {
+    let num_attempts = 10;
+    let backoff_dur = Duration::new(2, 0);
+
     let outpath = hashed_fn(moonbase, "wav")?;
     let path = Path::new(&outpath);
-    if !path.exists()
+    if path.exists()
     {
-        let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
-        let resp = reqwest::blocking::get(url)?;
+        return Ok(outpath);
+    }
+
+    let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
+
+    for _ in 0..num_attempts
+    {
+        let resp = reqwest::blocking::get(&url)?;
+        if resp.status() != reqwest::StatusCode::OK
+        {
+            std::thread::sleep(backoff_dur);
+            continue;
+        }
         resp.error_for_status_ref()?;
         use std::io::Write;
         let mut file = File::create(path)?;
         file.write_all(&resp.bytes()?)?;
+        return Ok(outpath);
     }
-    Ok(outpath)
+
+    bail!("API call failed")
 }
 
 #[test]

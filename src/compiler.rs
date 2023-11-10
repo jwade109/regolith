@@ -1,13 +1,122 @@
 use anyhow::Result;
+use std::collections::HashMap;
+use fraction::{Fraction, ToPrimitive};
+use anyhow::Context;
 
-use crate::lexer::{lex_file, parse_tokens};
+use crate::lexer::*;
 use crate::moonbase::{to_moonbase_str, MoonbaseNote, generate_moonbase};
 
 #[derive(Debug)]
-pub struct Sequence
+struct Sequence
 {
-    pub id: u8,
-    pub notes: Vec<MoonbaseNote> // TODO public?
+    id: u8,
+    notes: Vec<MoonbaseNote> // TODO public?
+}
+
+#[derive(Debug)]
+pub struct Section
+{
+    name: String,
+    tokens: Vec<Token>
+}
+
+fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
+{
+    Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
+}
+
+fn count_beats(tokens: &[Token]) -> Fraction
+{
+    tokens.iter().map(|t|
+    {
+        if let Token::Note(r) = t
+        {
+            r.beats
+        }
+        else
+        {
+            Fraction::new(0u64, 1u64)
+        }
+    }).sum()
+}
+
+#[test]
+fn how_many_beats_are_there()
+{
+    assert_eq!(Fraction::new(0u64, 1u64), count_beats(&[]));
+    assert_eq!(Fraction::new(3u64, 4u64), count_beats(&
+    [
+        Token::Note(RegoNote
+        {
+            prefix: String::new(),
+            suffix: String::new(),
+            beats: Fraction::new(2u64, 4u64),
+        }),
+        Token::Note(RegoNote
+        {
+            prefix: String::new(),
+            suffix: String::new(),
+            beats: Fraction::new(1u64, 4u64),
+        })
+    ]));
+}
+
+pub fn parse_tokens(tokens: &Vec<(Literal, Token)>) -> Result<Vec<Section>>
+{
+    let mut sections = vec![];
+
+    let mut current = Section { name: "".to_string(), tokens: vec![] };
+
+    for (i, (_, t)) in tokens.iter().enumerate()
+    {
+        if let Token::Section(name) = t
+        {
+            if !current.tokens.is_empty()
+            {
+                sections.push(current);
+            }
+            current = Section { name: name.to_string(), tokens: vec![] };
+        }
+
+        match t
+        {
+            Token::Section(_) => (),
+            _ =>
+            {
+                current.tokens.push(t.clone());
+            }
+        }
+    }
+
+    if !current.tokens.is_empty()
+    {
+        sections.push(current);
+    }
+
+
+    for (i, section) in sections.iter().enumerate()
+    {
+        println!("Section {}: {:?}", i, section.name);
+
+        let tracks = split_by_track(&section.tokens);
+
+        for (k, v) in tracks
+        {
+            println!("  Track {:?}", k);
+            let measures = split_by_measure(&v);
+            for m in measures
+            {
+                let beats = count_beats(&m);
+                println!("   --- ({:?})", beats);
+                for t in m
+                {
+                    println!("     {:?}", t);
+                }
+            }
+        }
+    }
+
+    Ok(sections)
 }
 
 fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
@@ -21,11 +130,59 @@ fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
     Ok(())
 }
 
+fn split_by_measure(tokens: &[Token]) -> Vec<Vec<Token>>
+{
+    let mut measures = vec![];
+
+    let mut current_measure = vec![];
+
+    for token in tokens
+    {
+        if let Token::MeasureBar() = token
+        {
+            if !current_measure.is_empty()
+            {
+                measures.push(current_measure.clone());
+                current_measure.clear();
+            }
+        }
+        else
+        {
+            current_measure.push(token.clone());
+        }
+    }
+
+    return measures;
+}
+
+fn split_by_track(tokens: &[Token]) -> HashMap<String, Vec<Token>>
+{
+    let mut tracks : HashMap<String, Vec<Token>> = HashMap::new();
+
+    let mut current_track = String::new();
+
+    for token in tokens
+    {
+        if let Token::Track(name) = token
+        {
+            current_track = name.to_string();
+        }
+        else
+        {
+            tracks.entry(current_track.clone())
+                .or_insert(vec![]).push(token.clone());
+        }
+    }
+
+    tracks
+}
+
 pub fn compile(inpath: &str, outpath: &str) -> Result<()>
 {
     let tokens = lex_file(inpath)?;
-    let sequences = parse_tokens(&tokens)?;
-    generate_from_sequences(&sequences)?;
+    let sections = parse_tokens(&tokens)?;
+
+    // generate_from_sequences(&sequences)?;
     Ok(())
 }
 

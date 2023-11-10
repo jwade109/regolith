@@ -1,11 +1,9 @@
 use std::fs::read_to_string;
-use fraction::{Fraction, ToPrimitive};
+use fraction::Fraction;
 use regex_macro::regex;
-use std::collections::HashMap;
 use anyhow::{Result, Context};
 
 use crate::moonbase::MoonbaseNote;
-use crate::compiler::Sequence;
 
 static PITCH_MAP : [(&str, u8); 49] =
 [
@@ -62,7 +60,7 @@ static PITCH_MAP : [(&str, u8); 49] =
     ("C4" , 37)
 ];
 
-fn pitch_string_to_id(pitch: &str) -> Option<u8>
+pub fn pitch_string_to_id(pitch: &str) -> Option<u8>
 {
     let (_, i) = PITCH_MAP.iter().find(|(s, _)| *s == pitch)?;
     Some(*i)
@@ -89,7 +87,7 @@ static NAMED_SCALE_MAP : [(&str, &[u8; 12]); 4] =
     ("CHROM", &[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
 ];
 
-fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
+pub fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
 {
     let (_, s) = NAMED_SCALE_MAP.iter().find(|(n, _)| *n == scale)?;
     let v : Vec<u8> = s.iter().cloned().filter(|x| *x > 0u8).collect::<Vec<_>>();
@@ -110,21 +108,21 @@ fn named_scale_lookup()
 #[derive(Debug, PartialEq, Eq)]
 pub struct Literal
 {
-    literal: String,
-    filename: String,
-    lineno: usize,
-    colno: usize,
+    pub literal: String,
+    pub filename: String,
+    pub lineno: usize,
+    pub colno: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RegoNote
 {
-    prefix: String,
-    suffix: String,
-    beats: Fraction
+    pub prefix: String,
+    pub suffix: String,
+    pub beats: Fraction
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum DynamicLevel
 {
     Pianissimo,
@@ -138,18 +136,19 @@ pub enum DynamicLevel
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Scale
 {
-    tone_id: u8,
-    steps: Vec<u8>
+    pub tone_id: u8,
+    pub steps: Vec<u8>
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token
 {
-    Track(u8),
+    Track(String),
     Tempo(u16),
     AbsolutePitch(u8),
     Note(RegoNote),
-    Repeat(bool),
+    StartRepeat(),
+    EndRepeat(u8),
     BeatAssert(i32),
     Scale(Scale),
     ScaleDegree(i32),
@@ -229,7 +228,7 @@ macro_rules! lex_nope
 {
     ($string: expr) =>
     {
-        assert!(lex_literal($string).is_none());
+        assert_eq!(lex_literal($string), None);
     }
 }
 
@@ -265,9 +264,9 @@ fn get_nth_capture(captures: &[Option<String>], i: usize) -> Option<String>
 
 fn lex_literal(literal: &str) -> Option<Token>
 {
-    let measure_bar_re = regex!(r"^\|");
-    let start_repeat_re = regex!(r"^\[:");
-    let stop_repeat_re = regex!(r"^:\]");
+    let measure_bar_re = regex!(r"^\|$");
+    let start_repeat_re = regex!(r"^\[:$");
+    let stop_repeat_re = regex!(r"^:\](x(\d*))?$");
     let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
     let track_token_re = regex!(r"^\[(\d+)\]$");
@@ -275,9 +274,9 @@ fn lex_literal(literal: &str) -> Option<Token>
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
     let scale_decl_re = regex!(r"^([A-G]\d*[#b]?)(\[(\d+)\]|PENTA|MAJOR|MINOR|CHROM)?$");
-    let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO");
+    let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO$");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
-    let section_marker_re = regex!(r"---([^\s-]*)---");
+    let section_marker_re = regex!(r"^---([^\s-]*)---$");
 
     lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
     {
@@ -287,8 +286,7 @@ fn lex_literal(literal: &str) -> Option<Token>
 
     lex_rule!(&literal, track_token_re, |cap: &[Option<String>]|
     {
-        let idx : u8 = get_nth_capture(cap, 1)?.parse().ok()?;
-        Some(Token::Track(idx))
+        Some(Token::Track(get_nth_capture(cap, 1)?))
     });
 
     lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
@@ -323,12 +321,20 @@ fn lex_literal(literal: &str) -> Option<Token>
 
     lex_rule!(&literal, start_repeat_re, |_: &[Option<String>]|
     {
-        Some(Token::Repeat(true))
+        Some(Token::StartRepeat())
     });
 
-    lex_rule!(&literal, stop_repeat_re, |_: &[Option<String>]|
+    lex_rule!(&literal, stop_repeat_re, |cap: &[Option<String>]|
     {
-        Some(Token::Repeat(false))
+        let times : u8 = if let Some(t) = get_nth_capture(cap, 2)
+        {
+            t.parse().ok()?
+        }
+        else
+        {
+            1
+        };
+        Some(Token::EndRepeat(times))
     });
 
     lex_rule!(&literal, beat_assert_re, |cap: &[Option<String>]|
@@ -417,62 +423,9 @@ pub fn lex_file(inpath: &str) -> Result<Vec<(Literal, Token)>>
     {
         let token = lex_literal(&lit.literal)
             .context(format!("Bad symbol:\n\n\t{:?}\n", lit))?;
-        println!("{:?}", token);
         ret.push((lit, token));
     }
     Ok(ret)
-}
-
-fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
-{
-    Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
-}
-
-pub fn parse_tokens(tokens: &Vec<(Literal, Token)>) -> Result<Vec<Sequence>>
-{
-    let mut current_bpm : u16 = 120;
-    let mut current_track : u8 = 0;
-    let mut current_pitch = pitch_string_to_id("C2").context("Bad pitch")?;
-    let mut _current_scale = Scale
-    {
-        tone_id: current_pitch,
-        steps: get_named_scale_steps("MAJOR").context("Bad default scale")?
-    };
-
-    let mut tracks : HashMap<u8, Sequence> = HashMap::new();
-
-    for (_, t) in tokens
-    {
-        match t
-        {
-            Token::Track(t) => current_track = *t,
-            Token::Tempo(bpm) => current_bpm = *bpm,
-            Token::AbsolutePitch(p) => current_pitch = *p,
-            Token::Note(n) =>
-            {
-                let mb = MoonbaseNote
-                {
-                    prefix: n.prefix.clone(),
-                    suffix: n.suffix.clone(),
-                    dur_ms: beats_to_millis(&n.beats, current_bpm).context("Bad fraction")?,
-                    tone_id: current_pitch
-                };
-
-                let seq = tracks.entry(current_track)
-                    .or_insert(Sequence { id: current_track, notes: vec![] });
-                seq.notes.push(mb);
-            }
-            Token::Repeat(_b) => (),
-            Token::BeatAssert(_b) => (),
-            Token::Scale(s) => _current_scale = s.clone(),
-            Token::ScaleDegree(_d) => (),
-            Token::Dynamic(_l) => (),
-            Token::MeasureBar() => (),
-            Token::Section(_n) => ()
-        }
-    }
-
-    Ok(tracks.into_values().collect())
 }
 
 #[test]
@@ -574,8 +527,17 @@ fn bar_lexing()
 #[test]
 fn repeat_lexing()
 {
-    lex_assert!("[:", Token::Repeat(true));
-    lex_assert!(":]", Token::Repeat(false));
+    lex_assert!("[:",    Token::StartRepeat());
+
+    lex_assert!(":]",    Token::EndRepeat(1));
+    lex_assert!(":]x2",  Token::EndRepeat(2));
+    lex_assert!(":]x6",  Token::EndRepeat(6));
+    lex_assert!(":]x12", Token::EndRepeat(12));
+    lex_assert!(":]x0",  Token::EndRepeat(0));
+
+    lex_nope!(":]x-1");
+    lex_nope!(":]x-5");
+    lex_nope!(":]x-15");
 }
 
 #[test]
@@ -605,11 +567,11 @@ fn bpm_lexing()
 #[test]
 fn track_lexing()
 {
-    lex_assert!("[0]",  Token::Track(0));
-    lex_assert!("[1]",  Token::Track(1));
-    lex_assert!("[2]",  Token::Track(2));
-    lex_assert!("[9]",  Token::Track(9));
-    lex_assert!("[12]", Token::Track(12));
+    lex_assert!("[0]",  Token::Track("0".to_string()));
+    lex_assert!("[1]",  Token::Track("1".to_string()));
+    lex_assert!("[2]",  Token::Track("2".to_string()));
+    lex_assert!("[9]",  Token::Track("9".to_string()));
+    lex_assert!("[12]", Token::Track("12".to_string()));
 }
 
 #[test]
