@@ -18,11 +18,21 @@ fn hashed_fn(arg: &str, ext: &str) -> Result<String>
 }
 
 #[test]
-fn moonbase_string_hashing()
+fn filename_hashing()
 {
     assert_eq!(
         hashed_fn("ewjwef", "wav").ok(),
         Some("/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string())
+    );
+
+    assert_eq!(
+        hashed_fn("", "jpg").ok(),
+        Some("/tmp/d41d8cd98f00b204e9800998ecf8427e.jpg".to_string())
+    );
+
+    assert_eq!(
+        hashed_fn("[duw<40,19>]", "mp3").ok(),
+        Some("/tmp/a85cb3b84d6813ab169ddca8a03be747.mp3".to_string())
     );
 }
 
@@ -102,11 +112,11 @@ fn moonbase_strings()
 
 pub fn generate_moonbase(moonbase: &str) -> Result<String>
 {
-    let mut outpath = hashed_fn(&moonbase, "wav")?;
+    let outpath = hashed_fn(moonbase, "wav")?;
     let path = Path::new(&outpath);
     if !path.exists()
     {
-        let mut file = File::create(&path)?;
+        let mut file = File::create(path)?;
         let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
         let resp = reqwest::blocking::get(url)?;
         resp.error_for_status_ref()?;

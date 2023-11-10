@@ -1,12 +1,8 @@
-#![allow(dead_code, unused)]
-
 use std::fs::read_to_string;
-use regex::Regex;
 use fraction::{Fraction, ToPrimitive};
 use regex_macro::regex;
 use std::collections::HashMap;
 use anyhow::{Result, Context, bail};
-use md5;
 
 use crate::moonbase::MoonbaseNote;
 use crate::compiler::Sequence;
@@ -68,7 +64,7 @@ static PITCH_MAP : [(&str, u8); 49] =
 
 fn pitch_string_to_id(pitch: &str) -> Result<u8>
 {
-    let (s, i) = PITCH_MAP.iter().find(|(s, i)| *s == pitch)
+    let (_, i) = PITCH_MAP.iter().find(|(s, _)| *s == pitch)
         .context(format!("Bad pitch string: `{}`", pitch))?;
     Ok(*i)
 }
@@ -96,7 +92,7 @@ static NAMED_SCALE_MAP : [(&str, &[u8; 12]); 4] =
 
 fn get_named_scale_steps(scale: &str) -> Option<Vec<u8>>
 {
-    let (n, s) = NAMED_SCALE_MAP.iter().find(|(n, s)| *n == scale)?;
+    let (_, s) = NAMED_SCALE_MAP.iter().find(|(n, _)| *n == scale)?;
     let v : Vec<u8> = s.iter().cloned().filter(|x| *x > 0u8).collect::<Vec<_>>();
     Some(v)
 }
@@ -132,12 +128,12 @@ pub struct RegoNote
 #[derive(Debug, PartialEq, Eq)]
 pub enum DynamicLevel
 {
-    PIANISSIMO,
-    PIANO,
-    MEZZOPIANO,
-    MEZZOFORTE,
-    FORTE,
-    FORTISSIMO
+    Pianissimo,
+    Piano,
+    Mezzopiano,
+    Mezzoforte,
+    Forte,
+    Fortissimo
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -194,20 +190,35 @@ fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
 macro_rules! lex_rule
 {
     ($lit: expr, $re: expr, $callable: expr) => {
-        if let Some(caps) = $re.captures($lit)
+        if let Some(captures) = $re.captures($lit)
         {
-            let mut v : Vec<Option<String>> = vec![];
-
-            for cap in caps.iter()
+            let v : Vec<Option<String>> = captures.iter().map(|cap|
             {
                 match cap
                 {
-                    Some(c) => v.push(Some(c.as_str().to_string())),
-                    None => v.push(None)
+                    Some(c) => Some(c.as_str().to_string()),
+                    None    => None
                 }
-            }
+            })
+            .collect();
 
-            return $callable(v);
+            return $callable(&v);
+        }
+    }
+}
+
+macro_rules! lex_assert
+{
+    ($string: expr, $expect: expr) =>
+    {
+        match lex_literal($string)
+        {
+            Ok(result) => assert_eq!(result, $expect),
+            Err(error) =>
+            {
+                println!("Error: {:?}", error);
+                assert!(false);
+            }
         }
     }
 }
@@ -216,20 +227,31 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
 {
     match level
     {
-        "PIANISSIMO" => Some(DynamicLevel::PIANISSIMO),
-        "PIANO"      => Some(DynamicLevel::PIANO),
-        "MEZZOPIANO" => Some(DynamicLevel::MEZZOPIANO),
-        "MEZZOFORTE" => Some(DynamicLevel::MEZZOFORTE),
-        "FORTE"      => Some(DynamicLevel::FORTE),
-        "FORTISSIMO" => Some(DynamicLevel::FORTISSIMO),
+        "PIANISSIMO" => Some(DynamicLevel::Pianissimo),
+        "PIANO"      => Some(DynamicLevel::Piano),
+        "MEZZOPIANO" => Some(DynamicLevel::Mezzopiano),
+        "MEZZOFORTE" => Some(DynamicLevel::Mezzoforte),
+        "FORTE"      => Some(DynamicLevel::Forte),
+        "FORTISSIMO" => Some(DynamicLevel::Fortissimo),
         _            => None
     }
 }
 
-fn get_nth_capture(captures: &Vec<Option<String>>, i: usize) -> Result<String>
+#[test]
+fn dynamic_lexing()
+{
+    lex_assert!("PIANISSIMO", Token::Dynamic(DynamicLevel::Pianissimo));
+    lex_assert!("PIANO",      Token::Dynamic(DynamicLevel::Piano));
+    lex_assert!("MEZZOPIANO", Token::Dynamic(DynamicLevel::Mezzopiano));
+    lex_assert!("MEZZOFORTE", Token::Dynamic(DynamicLevel::Mezzoforte));
+    lex_assert!("FORTE",      Token::Dynamic(DynamicLevel::Forte));
+    lex_assert!("FORTISSIMO", Token::Dynamic(DynamicLevel::Fortissimo));
+}
+
+fn get_nth_capture(captures: &[Option<String>], i: usize) -> Result<String>
 {
     Ok(captures.get(i).context("No nth element")?.clone()
-                             .context("Nth element is None")?.clone())
+                      .context("Nth element is None")?.clone())
 }
 
 fn lex_literal(literal: &str) -> Result<Token>
@@ -247,26 +269,26 @@ fn lex_literal(literal: &str) -> Result<Token>
     let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
 
-    lex_rule!(&literal, bpm_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
     {
         let bpm : u16 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::Tempo(bpm))
     });
 
-    lex_rule!(&literal, track_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, track_token_re, |cap: &[Option<String>]|
     {
         let idx : u8 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::Track(idx))
     });
 
-    lex_rule!(&literal, pitch_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
     {
         let s : String = get_nth_capture(&cap, 0)?;
         let id : u8 = pitch_string_to_id(&s)?;
         Ok(Token::AbsolutePitch(id))
     });
 
-    lex_rule!(&literal, note_token_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, note_token_re, |cap: &[Option<String>]|
     {
         let numer : u64 = match cap[4].as_ref()
         {
@@ -289,23 +311,23 @@ fn lex_literal(literal: &str) -> Result<Token>
         Ok(Token::Note(n))
     });
 
-    lex_rule!(&literal, start_repeat_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, start_repeat_re, |_: &[Option<String>]|
     {
         Ok(Token::Repeat(true))
     });
 
-    lex_rule!(&literal, stop_repeat_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, stop_repeat_re, |_: &[Option<String>]|
     {
         Ok(Token::Repeat(false))
     });
 
-    lex_rule!(&literal, beat_assert_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, beat_assert_re, |cap: &[Option<String>]|
     {
         let beats : i32 = get_nth_capture(&cap, 1)?.parse().unwrap();
         Ok(Token::BeatAssert(beats))
     });
 
-    lex_rule!(&literal, scale_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, scale_decl_re, |cap: &[Option<String>]|
     {
         let pitch_str = get_nth_capture(&cap, 1)?;
         let tone_id = pitch_string_to_id(&pitch_str)?;
@@ -327,24 +349,24 @@ fn lex_literal(literal: &str) -> Result<Token>
         Ok(Token::Scale(s))
     });
 
-    lex_rule!(&literal, dynamic_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, dynamic_decl_re, |cap: &[Option<String>]|
     {
         let level = parse_dynamic_level(cap[0].as_ref().unwrap());
         Ok(Token::Dynamic(level.unwrap()))
     });
 
-    lex_rule!(&literal, scale_degree_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, scale_degree_re, |cap: &[Option<String>]|
     {
         let d : i32 = get_nth_capture(&cap, 1)?.parse().context("Bad regex")?;
         Ok(Token::ScaleDegree(d))
     });
 
-    lex_rule!(&literal, measure_bar_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, measure_bar_re, |_: &[Option<String>]|
     {
         Ok(Token::MeasureBar())
     });
 
-    lex_rule!(&literal, rest_decl_re, |cap: Vec<Option<String>>|
+    lex_rule!(&literal, rest_decl_re, |cap: &[Option<String>]|
     {
         let numer : u64 = match cap[2].as_ref()
         {
@@ -393,7 +415,7 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<Sequence>>
     let mut current_bpm : u16 = 120;
     let mut current_track : u8 = 0;
     let mut current_pitch = pitch_string_to_id("C2")?;
-    let mut current_scale = Scale
+    let mut _current_scale = Scale
     {
         tone_id: pitch_string_to_id("C2")?,
         steps: get_named_scale_steps("MAJOR").context("Bad default scale")?
@@ -418,36 +440,20 @@ pub fn parse_tokens(tokens: &Vec<Token>) -> Result<Vec<Sequence>>
                     tone_id: current_pitch
                 };
 
-                let mut seq = tracks.entry(current_track)
+                let seq = tracks.entry(current_track)
                     .or_insert(Sequence { id: current_track, notes: vec![] });
                 seq.notes.push(mb);
             }
-            Token::Repeat(b) => (),
-            Token::BeatAssert(b) => (),
-            Token::Scale(s) => current_scale = s.clone(),
-            Token::ScaleDegree(d) => (),
-            Token::Dynamic(l) => (),
+            Token::Repeat(_b) => (),
+            Token::BeatAssert(_b) => (),
+            Token::Scale(s) => _current_scale = s.clone(),
+            Token::ScaleDegree(_d) => (),
+            Token::Dynamic(_l) => (),
             Token::MeasureBar() => ()
         }
     }
 
     Ok(tracks.into_values().collect())
-}
-
-macro_rules! lex_assert
-{
-    ($string: expr, $expect: expr) =>
-    {
-        match lex_literal($string)
-        {
-            Ok(result) => assert_eq!(result, $expect),
-            Err(error) =>
-            {
-                println!("Error: {:?}", error);
-                assert!(false);
-            }
-        }
-    }
 }
 
 #[test]
@@ -585,17 +591,6 @@ fn track_lexing()
     lex_assert!("[2]",  Token::Track(2));
     lex_assert!("[9]",  Token::Track(9));
     lex_assert!("[12]", Token::Track(12));
-}
-
-#[test]
-fn dynamic_lexing()
-{
-    lex_assert!("PIANISSIMO", Token::Dynamic(DynamicLevel::PIANISSIMO));
-    lex_assert!("PIANO",      Token::Dynamic(DynamicLevel::PIANO));
-    lex_assert!("MEZZOPIANO", Token::Dynamic(DynamicLevel::MEZZOPIANO));
-    lex_assert!("MEZZOFORTE", Token::Dynamic(DynamicLevel::MEZZOFORTE));
-    lex_assert!("FORTE",      Token::Dynamic(DynamicLevel::FORTE));
-    lex_assert!("FORTISSIMO", Token::Dynamic(DynamicLevel::FORTISSIMO));
 }
 
 #[test]

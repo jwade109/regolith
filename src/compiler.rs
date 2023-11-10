@@ -49,7 +49,6 @@ macro_rules! assert_result
 #[test]
 fn compile_songs()
 {
-    std::fs::create_dir("rust_songs");
     assert_result!(compile("examples/batman.reg",     "rust_songs/batman.wav"),     ());
     assert_result!(compile("examples/campfire.reg",   "rust_songs/campfire.wav"),   ());
     assert_result!(compile("examples/choir_test.reg", "rust_songs/choir_test.wav"), ());

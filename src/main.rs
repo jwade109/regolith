@@ -1,8 +1,4 @@
-#![allow(dead_code, unused)]
-
-use std::env;
-use anyhow::Result;
-use argparse::{ArgumentParser, StoreTrue, Store};
+use argparse::{ArgumentParser, Store};
 use crate::compiler::compile;
 
 mod lexer;
@@ -11,8 +7,6 @@ mod moonbase;
 
 fn main() -> anyhow::Result<()>
 {
-    let mut verbose = false;
-
     let mut inpath = String::new();
     let mut outpath = String::new();
 
