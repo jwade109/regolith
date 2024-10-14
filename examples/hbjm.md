@@ -1,6 +1,6 @@
 # happy birthday john madden
 
-```
+```regolith
 120BPM CMAJOR
 | 1 hxae/2 piy/2          |
 | 2 brr-th 1 dey 4 tuw    | 3 yu:2 -/2 1 hxae/2 piy/2       |

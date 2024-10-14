@@ -1,12 +1,14 @@
+# heart and soul
+
 ## preamble
 
-```
+```regolith
 180BPM C1MAJOR
 ```
 
 ## track 1
 
-```
+```regolith
 [1] MEZZOFORTE
 
 | 8  . . .:2 | -/2 8  ./2 7 ./2 6 ./2 7 ./2 8  ./2 9  . | @8
@@ -19,7 +21,7 @@
 
 ## track 2
 
-```
+```regolith
 [2] PIANO
 
 | 8 .:2 6 .:2 | 4 .:2 5 .:2 | @8

@@ -1,6 +1,6 @@
 # batman theme
 
-```
+```regolith
 400BPM
 [: | G2 nah nah F2# nah nah   |
    | F2 nah nah F2# nah nah   | :]

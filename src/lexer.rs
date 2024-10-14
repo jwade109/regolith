@@ -206,10 +206,15 @@ pub fn read_literals_from_markdown(filename: &str) -> Result<Vec<Literal>>
             continue;
         }
 
-        if line == "```"
+        if line == "```regolith"
         {
-            codeblock = !codeblock;
+            codeblock = true;
             continue
+        }
+        else if line == "```"
+        {
+            codeblock = false;
+            continue;
         }
 
         if !codeblock
@@ -221,9 +226,9 @@ pub fn read_literals_from_markdown(filename: &str) -> Result<Vec<Literal>>
         {
             let l = Literal
             {
-                colno: m.start(),
+                colno: m.start() + 1,
                 filename: filename.to_string(),
-                lineno,
+                lineno: lineno + 1,
                 literal: m.as_str().to_string()
             };
             result.push(l);

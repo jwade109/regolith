@@ -2,7 +2,7 @@
 
 ![what could be better than serving up smiles?](spongebob.png)
 
-```
+```regolith
 100BPM
 -/2 E leh-ts/2
 C3# gah/2 theh-r/2 rah-nd/2 the/4 kah-mp:3/4 B2 fay-r A2 ah-nd/2
