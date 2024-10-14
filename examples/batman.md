@@ -1,6 +1,8 @@
 # batman theme
 
+```
 400BPM
 [: | G2 nah nah F2# nah nah   |
    | F2 nah nah F2# nah nah   | :]
    | C3 bae-t:3/2 mae-n:2 -/2 |
+```

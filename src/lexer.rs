@@ -105,7 +105,7 @@ fn named_scale_lookup()
     assert_eq!(get_named_scale_steps(""),      None);
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Literal
 {
     pub literal: String,
@@ -157,15 +157,62 @@ pub enum Token
     Section(String)
 }
 
-fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
+pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Result<Vec<Literal>>
 {
     let mut result = Vec::new();
 
     let reg = regex!(r"[^\s]+");
 
+    for (lineno, line) in source.lines().enumerate()
+    {
+        if line.is_empty() || line.starts_with('#')
+        {
+            continue;
+        }
+
+        for m in reg.find_iter(&line)
+        {
+            let l = Literal
+            {
+                colno: m.start(),
+                filename: filename.to_string(),
+                lineno,
+                literal: m.as_str().to_string()
+            };
+            result.push(l);
+        }
+    }
+
+    Ok(result)
+}
+
+fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
+{
+    read_literals_from_multiline_string(&read_to_string(filename)?, filename)
+}
+
+pub fn read_literals_from_markdown(filename: &str) -> Result<Vec<Literal>>
+{
+    let mut result = Vec::new();
+
+    let reg = regex!(r"[^\s]+");
+
+    let mut codeblock = false;
+
     for (lineno, line) in read_to_string(filename)?.lines().enumerate()
     {
         if line.is_empty() || line.starts_with('#')
+        {
+            continue;
+        }
+
+        if line == "```"
+        {
+            codeblock = !codeblock;
+            continue
+        }
+
+        if !codeblock
         {
             continue;
         }
@@ -269,7 +316,7 @@ fn lex_literal(literal: &str) -> Option<Token>
     let stop_repeat_re = regex!(r"^:\](x(\d*))?$");
     let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
-    let track_token_re = regex!(r"^\[(\d+)\]$");
+    let track_token_re = regex!(r"^\[([^\s-]*)\]$");
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
@@ -415,18 +462,37 @@ fn lex_literal(literal: &str) -> Option<Token>
     None
 }
 
-pub fn lex_file(inpath: &str) -> Result<Vec<(Literal, Token)>>
+pub fn lex_literals(literals: &Vec<Literal>) -> Result<Vec<(Literal, Token)>>
 {
-    let literals = read_literals_from_file(inpath)?;
     let mut ret = vec![];
     for lit in literals
     {
         let token = lex_literal(&lit.literal)
             .context(format!("Bad symbol:\n\n\t{:?}\n", lit))?;
-        ret.push((lit, token));
+        ret.push((lit.clone(), token));
     }
     Ok(ret)
 }
+
+pub fn lex_multiline_string(source: &str) -> Result<Vec<(Literal, Token)>>
+{
+    lex_literals(&read_literals_from_multiline_string(source, "")?)
+}
+
+pub fn lex_file(inpath: &str) -> Result<Vec<(Literal, Token)>>
+{
+    lex_literals(&read_literals_from_file(inpath)?)
+}
+
+pub fn lex_markdown(inpath: &str) -> Result<Vec<(Literal, Token)>>
+{
+    lex_literals(&read_literals_from_markdown(inpath)?)
+}
+
+// fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
+// {
+//     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
+// }
 
 #[test]
 fn note_lexing()
