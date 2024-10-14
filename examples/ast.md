@@ -2,7 +2,7 @@
 
 Hello!
 
-```
+```regolith
 CMAJOR
 
 F3

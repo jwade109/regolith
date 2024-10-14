@@ -1,12 +1,12 @@
 use crate::lexer::{Literal, Token, lex_multiline_string, RegoNote, DynamicLevel};
 
-pub struct Parser
+struct Parser
 {
     tokens: Vec<(Literal, Token)>
 }
 
 #[derive(Debug)]
-pub enum ASTNode
+enum ASTNode
 {
     RepeatBlock
     {
@@ -79,14 +79,14 @@ pub enum ParseError
 #[derive(Debug)]
 pub struct AST
 {
-    pub nodes: Vec<ASTNode>,
+    nodes: Vec<ASTNode>,
 }
 
 type ParseResult<T> = Result<T, ParseError>;
 
 impl Parser
 {
-    pub fn new(tokens: &Vec<(Literal, Token)>) -> Self
+    fn new(tokens: &Vec<(Literal, Token)>) -> Self
     {
         Parser { tokens: tokens.iter().rev().map(|(l, t)| (l.clone(), t.clone())).collect() }
     }
@@ -101,35 +101,38 @@ impl Parser
         return self.tokens.pop()
     }
 
-    pub fn parse_toplevel(&mut self) -> ParseResult<AST>
+}
+
+pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
+{
+    let mut parser = Parser::new(tokens);
+
+    let mut nodes = vec![];
+
+    while let Some((literal, token)) = parser.peek()
     {
-        let mut nodes = vec![];
-
-        while let Some((literal, token)) = self.peek()
+        let node = match token
         {
-            let node = match token
-            {
-                Token::StartRepeat() => parse_repeat_block(self),
-                Token::AbsolutePitch(_) => parse_absolute_pitch(self),
-                Token::Tempo(_) => parse_tempo(self),
-                Token::Scale(_) => parse_scale(self),
-                Token::Track(_) => parse_track(self),
-                Token::Note(_) => parse_note(self),
-                Token::BeatAssert(_) => parse_beat_assertion(self),
-                Token::Section(_) => parse_section(self),
-                Token::ScaleDegree(_) => parse_scale_degree(self),
-                Token::MeasureBar() => parse_measure_bar(self),
-                Token::Dynamic(_) => parse_dynamic(self),
-                Token::EndRepeat(_) => Err(ParseError::Unexpected(
-                    "Unexpected repeat block terminator".to_string(),
-                    token.clone(), literal.clone())),
-            }?;
+            Token::StartRepeat() => parse_repeat_block(&mut parser),
+            Token::AbsolutePitch(_) => parse_absolute_pitch(&mut parser),
+            Token::Tempo(_) => parse_tempo(&mut parser),
+            Token::Scale(_) => parse_scale(&mut parser),
+            Token::Track(_) => parse_track(&mut parser),
+            Token::Note(_) => parse_note(&mut parser),
+            Token::BeatAssert(_) => parse_beat_assertion(&mut parser),
+            Token::Section(_) => parse_section(&mut parser),
+            Token::ScaleDegree(_) => parse_scale_degree(&mut parser),
+            Token::MeasureBar() => parse_measure_bar(&mut parser),
+            Token::Dynamic(_) => parse_dynamic(&mut parser),
+            Token::EndRepeat(_) => Err(ParseError::Unexpected(
+                "Unexpected repeat block terminator".to_string(),
+                token.clone(), literal.clone())),
+        }?;
 
-            nodes.push(node);
-        }
-
-        Ok(AST{ nodes })
+        nodes.push(node);
     }
+
+    Ok(AST{ nodes })
 }
 
 fn parse_scale_degree(parser: &mut Parser) -> ParseResult<ASTNode>
@@ -378,16 +381,6 @@ fn print_node(node: &ASTNode, level: u32)
             }
             println!("{}[clrpt] {} ({})", pad, end_literal.literal, count);
         }
-        // ASTNode::Section{nodes} =>
-        // {
-        //     println!("SECTION");
-        //     for n in nodes
-        //     {
-        //         print_node(n, level + 1);
-        //     }
-        //     println!("END SECTION");
-        // }
-        // _ => (),
     }
 }
 

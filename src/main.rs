@@ -2,7 +2,7 @@
 
 use argparse::{ArgumentParser, Store};
 use crate::lexer::lex_markdown;
-use crate::parser::{Parser, ASTNode, print_tree};
+use crate::parser::{parse_to_ast, print_tree};
 use crate::compiler::compile;
 
 mod lexer;
@@ -28,8 +28,7 @@ fn main() -> anyhow::Result<()>
     }
 
     let tokens = lex_markdown(&inpath).unwrap();
-    let mut parser = Parser::new(&tokens);
-    let tree = parser.parse_toplevel();
+    let tree = parse_to_ast(&tokens);
 
     if let Ok(t) = tree
     {
