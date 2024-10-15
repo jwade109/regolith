@@ -1,12 +1,13 @@
 use crate::lexer::{Literal, Token, lex_multiline_string, RegoNote, DynamicLevel, Scale};
+use indoc::indoc;
 
 struct Parser
 {
     tokens: Vec<(Literal, Token)>
 }
 
-#[derive(Debug)]
-enum ASTNode
+#[derive(Debug, Clone)]
+pub enum ASTNode
 {
     RepeatBlock
     {
@@ -19,8 +20,7 @@ enum ASTNode
     {
         literal: Literal,
         name: String,
-        // TODO
-        // nodes: Vec<ASTNode>
+        nodes: Vec<ASTNode>
     },
     AbsolutePitch
     {
@@ -69,7 +69,7 @@ enum ASTNode
 }
 
 #[derive(Debug)]
-pub enum ParseError
+pub enum SyntaxError
 {
     Generic(String),
     Unexpected(String, Token, Literal),
@@ -78,21 +78,27 @@ pub enum ParseError
 #[derive(Debug)]
 pub struct AST
 {
-    nodes: Vec<ASTNode>,
+    pub nodes: Vec<ASTNode>,
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+type ParseResult<T> = Result<T, SyntaxError>;
 
 impl Parser
 {
     fn new(tokens: &Vec<(Literal, Token)>) -> Self
     {
-        Parser { tokens: tokens.iter().rev().map(|(l, t)| (l.clone(), t.clone())).collect() }
+        Parser { tokens: tokens.iter().rev().map(
+            |(l, t)| (l.clone(), t.clone())).collect() }
     }
 
     fn peek(&self) -> Option<&(Literal, Token)>
     {
         return self.tokens.last()
+    }
+
+    fn peek_copy(&self) -> Option<(Literal, Token)>
+    {
+        return self.tokens.last().cloned()
     }
 
     fn take(&mut self) -> Option<(Literal, Token)>
@@ -112,18 +118,18 @@ pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
     {
         let node = match token
         {
-            Token::StartRepeat() => eat_repeat_block(&mut parser),
             Token::AbsolutePitch(_) => eat_atomic(&mut parser),
             Token::Tempo(_) => eat_atomic(&mut parser),
             Token::Scale(_) => eat_atomic(&mut parser),
             Token::Track(_) => eat_atomic(&mut parser),
             Token::Note(_) => eat_atomic(&mut parser),
             Token::BeatAssert(_) => eat_atomic(&mut parser),
-            Token::Section(_) => eat_section(&mut parser),
             Token::ScaleDegree(_) => eat_atomic(&mut parser),
             Token::MeasureBar() => eat_atomic(&mut parser),
             Token::Dynamic(_) => eat_atomic(&mut parser),
-            Token::EndRepeat(_) => Err(ParseError::Unexpected(
+            Token::Section(_) => eat_section(&mut parser),
+            Token::StartRepeat() => eat_repeat_block(&mut parser),
+            Token::EndRepeat(_) => Err(SyntaxError::Unexpected(
                 "Unexpected repeat block terminator".to_string(),
                 token.clone(), literal.clone())),
         }?;
@@ -136,32 +142,62 @@ pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
 
 fn eat_section(parser: &mut Parser) -> ParseResult<ASTNode>
 {
-    if let Some((literal, token)) = parser.take()
+    let (section_literal, section_token) = parser.take().ok_or(
+        SyntaxError::Generic("Expected a section header".to_string()))?;
+    let section_name = if let Token::Section(name) = section_token { name }
+        else { return Err(SyntaxError::Unexpected(
+            "Expected a section header".to_string(), section_token, section_literal)); };
+
+    let mut nodes = vec![];
+
+    while let Some((literal, token)) = parser.peek_copy()
     {
-        return match token
+        if let Token::Section(_) = token
         {
-            Token::Section(name) => Ok(ASTNode::Section { literal, name }),
-            _ => Err(ParseError::Unexpected("Expected a section header".to_string(), token, literal)),
+            // it's another section header; we're done
+            break
         }
+
+        let node = match token
+        {
+            Token::Note(_) |
+            Token::Dynamic(_) |
+            Token::Tempo(_) |
+            Token::MeasureBar() |
+            Token::AbsolutePitch(_) |
+            Token::Scale(_) |
+            Token::Track(_) => eat_atomic(parser),
+            Token::StartRepeat() => eat_repeat_block(parser),
+            _ => Err(SyntaxError::Unexpected("Illegal token in section".to_string(), token, literal)),
+        }?;
+
+        nodes.push(node);
     }
 
-    Err(ParseError::Generic("No token to take".to_string()))
+    Ok(ASTNode::Section { literal: section_literal, name: section_name, nodes })
 }
 
 fn eat_repeat_block(parser: &mut Parser) -> ParseResult<ASTNode>
 {
-    parser.take(); // TODO assert that this is [:
-
-    let (start_literal, _start_token) = parser.take()
-        .ok_or(ParseError::Generic("Expected token at start of repeat block".to_string()))?;
-    let nodes = parse_repeat_block_interior(parser)?;
+    let (start_literal, start_token) = parser.take()
+        .ok_or(SyntaxError::Generic("Expected token at start of repeat block".to_string()))?;
+    if let Token::StartRepeat() = start_token
+    {
+        // great!
+    }
+    else
+    {
+        return Err(SyntaxError::Unexpected(
+            "Expected a repeat block initiator".to_string(), start_token, start_literal));
+    }
+    let nodes = eat_repeat_block_interior(parser)?;
     let (end_literal, end_token) = parser.take()
-        .ok_or(ParseError::Generic("Unterminated repeat block".to_string()))?;
+        .ok_or(SyntaxError::Generic("Unterminated repeat block".to_string()))?;
     if let Token::EndRepeat(count) = end_token
     {
         return Ok(ASTNode::RepeatBlock{ start_literal, end_literal, count, nodes });
     }
-    Err(ParseError::Unexpected("Expected end repeat block token".to_string(),
+    Err(SyntaxError::Unexpected("Expected end repeat block token".to_string(),
         end_token.clone(), end_literal.clone()))
 }
 
@@ -178,7 +214,7 @@ fn atomic_token_to_ast_node(token: Token, literal: Literal) -> Option<ASTNode>
         Token::AbsolutePitch(pitch) => Some(ASTNode::AbsolutePitch{ literal, pitch }),
         Token::BeatAssert(beats) => Some(ASTNode::BeatAssert { literal, beats }),
         Token::MeasureBar() => Some(ASTNode::MeasureBar { literal }),
-        Token::Section(name) => Some(ASTNode::Section { literal, name }),
+        Token::Section(_) |
         Token::EndRepeat(_) |
         Token::StartRepeat() => None,
     }
@@ -194,15 +230,15 @@ fn eat_atomic(parser: &mut Parser) -> ParseResult<ASTNode>
         }
         else
         {
-            return Err(ParseError::Unexpected(
+            return Err(SyntaxError::Unexpected(
                 "Expected an atomic token, but got".to_string(), token, literal));
         }
     }
 
-    Err(ParseError::Generic("Expected an atomic token, but nothing left".to_string()))
+    Err(SyntaxError::Generic("Expected an atomic token, but nothing left".to_string()))
 }
 
-fn parse_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
+fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
 {
     let mut nodes = vec![];
 
@@ -218,7 +254,7 @@ fn parse_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
             Token::Note(_) => eat_atomic(parser),
             Token::AbsolutePitch(_) => eat_atomic(parser),
             Token::MeasureBar() => eat_atomic(parser),
-            _ => Err(ParseError::Unexpected("Illegal token in repeat block".to_string(),
+            _ => Err(SyntaxError::Unexpected("Illegal token in repeat block".to_string(),
                 token.clone(), literal.clone())),
         }?;
 
@@ -228,55 +264,108 @@ fn parse_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
     Ok(nodes)
 }
 
-fn print_node(node: &ASTNode, level: u32)
+fn node_to_string(node: &ASTNode, level: u32) -> String
 {
     let pad = (0..level*3).map(|_| " ").collect::<String>();
 
     match node
     {
-        ASTNode::Tempo{literal, ..} => println!("{}[tempo] {}", pad, literal.literal),
-        ASTNode::AbsolutePitch{literal, ..} => println!("{}[abspitch] {}", pad, literal.literal),
-        ASTNode::Scale{literal, ..} => println!("{}[scale] {}", pad, literal.literal),
-        ASTNode::Note{literal, ..} => println!("{}[note] {}", pad, literal.literal),
-        ASTNode::Track{literal, ..} => println!("{}[track] {}", pad, literal.literal),
-        ASTNode::BeatAssert{literal, ..} => println!("{}[beats] {}", pad, literal.literal),
-        ASTNode::Section{literal, ..}  => println!("{}[section] {}", pad, literal.literal),
-        ASTNode::ScaleDegree{literal, ..}  => println!("{}[scaledeg] {}", pad, literal.literal),
-        ASTNode::MeasureBar{literal, ..}  => println!("{}[mb] {}", pad, literal.literal),
-        ASTNode::DynamicLevel{literal, ..}  => println!("{}[dyn] {}", pad, literal.literal),
+        ASTNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
+        ASTNode::AbsolutePitch{literal, ..} => format!("{}[abspitch] {}", pad, literal.literal),
+        ASTNode::Scale{literal, ..} => format!("{}[scale] {}", pad, literal.literal),
+        ASTNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
+        ASTNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
+        ASTNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
+        ASTNode::ScaleDegree{literal, ..}  => format!("{}[scaledeg] {}", pad, literal.literal),
+        ASTNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
+        ASTNode::DynamicLevel{literal, ..}  => format!("{}[dyn] {}", pad, literal.literal),
         ASTNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
         {
-            println!("{}[oprpt] {}", pad, start_literal.literal);
+            let mut segments = vec![
+                format!("{}[repeat] x{}", pad, count)];
+
             for n in nodes
             {
-                print_node(n, level + 1);
+                segments.push(node_to_string(n, level + 1));
             }
-            println!("{}[clrpt] {} ({})", pad, end_literal.literal, count);
-        }
+
+            segments.join("\n")
+        },
+        ASTNode::Section{literal, name, nodes} =>
+        {
+            let mut segments = vec![
+                format!("{}[section] {}", pad, literal.literal)];
+
+            for n in nodes
+            {
+                segments.push(node_to_string(n, level + 1));
+            }
+
+            segments.join("\n")
+        },
     }
+}
+
+fn tree_to_string(tree: &AST) -> String
+{
+    let mut segments = vec!["[top]".to_string()];
+    for node in &tree.nodes
+    {
+        segments.push(node_to_string(node, 1));
+    }
+    segments.push("[end]".to_string());
+    segments.join("\n")
 }
 
 pub fn print_tree(tree: &AST)
 {
-    println!("[top]");
-    for node in &tree.nodes
-    {
-        print_node(&node, 1);
-    }
+    println!("{}", tree_to_string(tree))
 }
 
-pub fn print_parse_error(pe: &ParseError)
+pub fn print_parse_error(pe: &SyntaxError)
 {
     match pe
     {
-        ParseError::Generic(msg) =>
+        SyntaxError::Generic(msg) =>
         {
             println!("\n  Generic parse error: {}\n", msg);
         },
-        ParseError::Unexpected(msg, token, literal) =>
+        SyntaxError::Unexpected(msg, token, literal) =>
         {
             println!("\n  Unexpected token: {} - {:?}, \"{}\", line {}, col {}\n",
                 msg, token, literal.literal, literal.lineno, literal.colno);
         },
     }
+}
+
+fn assert_ast_results(source: &str, ast_repr: &str)
+{
+    let tokens = lex_multiline_string(source).unwrap();
+    let tree = parse_to_ast(&tokens).unwrap();
+    let repr = tree_to_string(&tree);
+    assert_eq!(repr, ast_repr);
+}
+
+#[test]
+fn parsing_test()
+{
+    assert_ast_results("[: . ./2 :]",
+        indoc! {"
+        [top]
+           [repeat] x1
+              [note] .
+              [note] ./2
+        [end]"});
+
+    assert_ast_results("---BIG--- F3 . . F2 ./3 duh:3/2",
+        indoc! {"
+        [top]
+           [section] ---BIG---
+              [abspitch] F3
+              [note] .
+              [note] .
+              [abspitch] F2
+              [note] ./3
+              [note] duh:3/2
+        [end]"});
 }

@@ -1,6 +1,7 @@
 #![allow(warnings)]
 
 use argparse::{ArgumentParser, Store};
+use semantics::do_semantics;
 use crate::lexer::lex_markdown;
 use crate::parser::{parse_to_ast, print_tree, print_parse_error};
 use crate::compiler::compile;
@@ -9,6 +10,7 @@ mod lexer;
 mod compiler;
 mod moonbase;
 mod parser;
+mod semantics;
 
 fn main() -> anyhow::Result<()>
 {
@@ -32,7 +34,11 @@ fn main() -> anyhow::Result<()>
 
     match tree
     {
-        Ok(t) => print_tree(&t),
+        Ok(t) =>
+        {
+            print_tree(&t);
+            println!("{:?}", do_semantics(&t));
+        }
         Err(e) => print_parse_error(&e),
     }
 
