@@ -1,9 +1,15 @@
 use std::fs::read_to_string;
 use fraction::Fraction;
 use regex_macro::regex;
-use anyhow::{Result, Context};
 
 use crate::moonbase::MoonbaseNote;
+
+#[derive(Debug)]
+pub enum LexerError
+{
+    Generic(String),
+    InvalidSyntax(Literal)
+}
 
 static PITCH_MAP : [(&str, u8); 49] =
 [
@@ -157,7 +163,9 @@ pub enum Token
     Section(String)
 }
 
-pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Result<Vec<Literal>>
+type LexerResult<T> = Result<T, LexerError>;
+
+pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> LexerResult<Vec<Literal>>
 {
     let mut result = Vec::new();
 
@@ -186,12 +194,13 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Resu
     Ok(result)
 }
 
-fn read_literals_from_file(filename: &str) -> Result<Vec<Literal>>
+fn read_literals_from_file(filename: &str) -> LexerResult<Vec<Literal>>
 {
-    read_literals_from_multiline_string(&read_to_string(filename)?, filename)
+    read_literals_from_multiline_string(&read_to_string(filename)
+        .or(Err(LexerError::Generic("Failed to open file".to_string())))?, filename)
 }
 
-pub fn read_literals_from_markdown(filename: &str) -> Result<Vec<Literal>>
+pub fn read_literals_from_markdown(filename: &str) -> LexerResult<Vec<Literal>>
 {
     let mut result = Vec::new();
 
@@ -199,7 +208,8 @@ pub fn read_literals_from_markdown(filename: &str) -> Result<Vec<Literal>>
 
     let mut codeblock = false;
 
-    for (lineno, line) in read_to_string(filename)?.lines().enumerate()
+    for (lineno, line) in read_to_string(filename)
+        .or(Err(LexerError::Generic("Failed to open file".to_string())))?.lines().enumerate()
     {
         if line.is_empty() || line.starts_with('#')
         {
@@ -467,33 +477,34 @@ fn lex_literal(literal: &str) -> Option<Token>
     None
 }
 
-pub fn lex_literals(literals: &Vec<Literal>) -> Result<Vec<(Literal, Token)>>
+pub fn lex_literals(literals: &Vec<Literal>) -> LexerResult<Vec<(Literal, Token)>>
 {
     let mut ret = vec![];
     for lit in literals
     {
         let token = lex_literal(&lit.literal)
-            .context(format!("Bad symbol:\n\n\t{:?}\n", lit))?;
+            .ok_or(LexerError::InvalidSyntax(lit.clone()))?;
         ret.push((lit.clone(), token));
     }
     Ok(ret)
 }
 
-pub fn lex_multiline_string(source: &str) -> Result<Vec<(Literal, Token)>>
+pub fn lex_multiline_string(source: &str) -> LexerResult<Vec<(Literal, Token)>>
 {
     lex_literals(&read_literals_from_multiline_string(source, "")?)
 }
 
-pub fn lex_file(inpath: &str) -> Result<Vec<(Literal, Token)>>
+pub fn lex_file(inpath: &str) -> LexerResult<Vec<(Literal, Token)>>
 {
     lex_literals(&read_literals_from_file(inpath)?)
 }
 
-pub fn lex_markdown(inpath: &str) -> Result<Vec<(Literal, Token)>>
+pub fn lex_markdown(inpath: &str) -> LexerResult<Vec<(Literal, Token)>>
 {
     lex_literals(&read_literals_from_markdown(inpath)?)
 }
 
+// TODO
 // fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
 // {
 //     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
@@ -660,4 +671,20 @@ fn section_lexing()
     lex_assert!("---hello---", Token::Section("hello".to_string()));
     lex_assert!("---GOO---",   Token::Section("GOO".to_string()));
     lex_assert!("---34g---",   Token::Section("34g".to_string()));
+}
+
+pub fn print_lexer_error(error: &LexerError)
+{
+    match error
+    {
+        LexerError::Generic(msg) =>
+        {
+            println!("\n  Generic lexer error: {}\n", msg);
+        },
+        LexerError::InvalidSyntax(literal) =>
+        {
+            println!("\n  Invalid syntax: \"{}\", line {}, col {}\n",
+                literal.literal, literal.lineno, literal.colno);
+        },
+    }
 }

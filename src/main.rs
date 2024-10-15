@@ -2,9 +2,9 @@
 
 use argparse::{ArgumentParser, Store};
 use semantics::do_semantics;
-use crate::lexer::lex_markdown;
+use crate::lexer::{lex_markdown, print_lexer_error};
 use crate::parser::{parse_to_ast, print_tree, print_parse_error};
-use crate::compiler::compile;
+// use crate::compiler::compile;
 
 mod lexer;
 mod compiler;
@@ -12,7 +12,7 @@ mod moonbase;
 mod parser;
 mod semantics;
 
-fn main() -> anyhow::Result<()>
+fn main()
 {
     let mut inpath = String::new();
     let mut outpath = String::new();
@@ -29,23 +29,33 @@ fn main() -> anyhow::Result<()>
         ap.parse_args_or_exit();
     }
 
-    let tokens = lex_markdown(&inpath).unwrap();
-    let tree = parse_to_ast(&tokens);
-
-    match tree
+    let tokens = match lex_markdown(&inpath)
     {
-        Ok(t) =>
+        Ok(tokens) => tokens,
+        Err(error) =>
         {
-            print_tree(&t);
-            println!("{:?}", do_semantics(&t));
+            print_lexer_error(&error);
+            return;
+        },
+    };
+
+    let tree = match parse_to_ast(&tokens)
+    {
+        Ok(tree) => tree,
+        Err(error) =>
+        {
+            print_parse_error(&error);
+            return;
         }
-        Err(e) => print_parse_error(&e),
-    }
+    };
+
+    print_tree(&tree);
+    do_semantics(&tree);
 
     // println!("{} -> {}", &inpath, &outpath);
     // compile(&inpath, &outpath)?;
 
     // println!("Finished with no errors.");
 
-    Ok(())
+    // Ok(())
 }

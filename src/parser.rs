@@ -322,9 +322,9 @@ pub fn print_tree(tree: &AST)
     println!("{}", tree_to_string(tree))
 }
 
-pub fn print_parse_error(pe: &SyntaxError)
+pub fn print_parse_error(error: &SyntaxError)
 {
-    match pe
+    match error
     {
         SyntaxError::Generic(msg) =>
         {
