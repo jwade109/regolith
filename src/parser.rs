@@ -32,6 +32,7 @@ pub enum PreambleNode
         literal: Literal,
         ratio: Fraction,
     },
+    Endline(Literal),
 }
 
 #[derive(Debug, Clone)]
@@ -54,16 +55,6 @@ pub enum StaffNode
     {
         literal: Literal,
         pitch: u8,
-    },
-    Tempo // TODO delete
-    {
-        literal: Literal,
-        tempo: u16,
-    },
-    Scale // TODO delete
-    {
-        literal: Literal,
-        scale: Scale,
     },
     Note
     {
@@ -89,16 +80,6 @@ pub enum StaffNode
     {
         literal: Literal,
     },
-    DynamicLevel // TODO delete
-    {
-        literal: Literal,
-        level: DynamicLevel,
-    },
-    TimeSignature // TODO delete
-    {
-        literal: Literal,
-        ratio: Fraction,
-    },
     Endline
     {
         literal: Literal
@@ -118,7 +99,7 @@ pub struct SectionNode
 {
     literal: Literal,
     name: String,
-    preamble: Vec<StaffNode>, // TODO PreambleNode
+    preamble: Vec<PreambleNode>,
     staff: Vec<StaffNode>
 }
 
@@ -185,36 +166,53 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
         "".to_string()
     };
 
-    let mut first_staff: Option<(Literal, Token)> = None;
+    let mut first_staff: Option<Literal> = None;
+    let mut preamble: Vec<PreambleNode> = vec![];
+    let mut staff: Vec<StaffNode> = vec![];
 
-    let mut staff = vec![];
-    let mut preamble = vec![];
-
+    // parse the preamble
     while let Some((literal, token)) = parser.peek_copy()
     {
-        if let Token::Section(_) = token
-        {
-            // it's another section header; we're done
-            break
-        }
-
         let node = match token
         {
-            Token::Endline() => eat_atomic(parser),
+            Token::Dynamic(_) |
+            Token::TimeSignature(_) |
+            Token::Scale(_) |
+            Token::Tempo(_) |
+            Token::Endline() =>
+            {
+                eat_preamble_atomic(parser)
+            }
+            _ =>
+            {
+                break;
+            }
+        }?;
+
+        preamble.push(node);
+    }
+
+    // parse the staff
+    while let Some((literal, token)) = parser.peek_copy()
+    {
+        let node = match token
+        {
+            Token::Section(_) => break,
             Token::Dynamic(_) |
             Token::Tempo(_) |
             Token::Scale(_) |
             Token::TimeSignature(_) =>
             {
-                if let Some(first) = first_staff.clone()
+                if let Some(ref first) = first_staff
                 {
-                    Err(SyntaxError::PreambleOrder(section_literal.clone(), first.0, literal))
+                    Err(SyntaxError::PreambleOrder(section_literal.clone(), first.clone(), literal))
                 }
                 else
                 {
-                    eat_atomic(parser)
+                    Err(SyntaxError::Generic("Expected a staff element".to_string()))
                 }
             },
+            Token::Endline() |
             Token::MeasureBar() |
             Token::Track(_) |
             Token::ScaleDegree(_) |
@@ -222,25 +220,18 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
             Token::AbsolutePitch(_) |
             Token::Note(_) =>
             {
-                first_staff.get_or_insert((literal, token));
-                eat_atomic(parser)
+                first_staff.get_or_insert(literal);
+                eat_staff_atomic(parser)
             },
             Token::StartRepeat() =>
             {
-                first_staff.get_or_insert((literal, token));
+                first_staff.get_or_insert(literal);
                 eat_repeat_block(parser)
             },
             _ => Err(SyntaxError::Unexpected("Illegal token in section".to_string(), token, literal)),
         }?;
 
-        if first_staff.is_none()
-        {
-            preamble.push(node);
-        }
-        else
-        {
-            staff.push(node);
-        }
+        staff.push(node);
     }
 
     Ok(SectionNode { literal: section_literal, name: section_name, preamble, staff })
@@ -270,43 +261,82 @@ fn eat_repeat_block(parser: &mut Parser) -> ParseResult<StaffNode>
         end_token.clone(), end_literal.clone()))
 }
 
-fn atomic_token_to_ast_node(token: Token, literal: Literal) -> Option<StaffNode>
+fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNode>
 {
     match token
     {
         Token::Note(note) => Some(StaffNode::Note{ literal, note }),
         Token::Track(track_id) => Some(StaffNode::Track{ literal, track_id }),
-        Token::Tempo(bpm) => Some(StaffNode::Tempo{ literal, tempo: bpm }),
-        Token::Dynamic(level) => Some(StaffNode::DynamicLevel{ literal, level }),
-        Token::Scale(scale) => Some(StaffNode::Scale{ literal, scale: scale.clone() }),
         Token::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ literal, degree }),
         Token::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ literal, pitch }),
         Token::BeatAssert(beats) => Some(StaffNode::BeatAssert { literal, beats }),
         Token::MeasureBar() => Some(StaffNode::MeasureBar { literal }),
-        Token::TimeSignature(ratio) => Some(StaffNode::TimeSignature{ literal, ratio }),
         Token::Endline() => Some(StaffNode::Endline{ literal }),
+        Token::Tempo(_) |
+        Token::Dynamic(_) |
+        Token::Scale(_) |
+        Token::TimeSignature(_) |
         Token::Section(_) |
         Token::EndRepeat(_) |
         Token::StartRepeat() => None,
     }
 }
 
-fn eat_atomic(parser: &mut Parser) -> ParseResult<StaffNode>
+fn atomic_token_to_preamble_node(token: Token, literal: Literal) -> Option<PreambleNode>
+{
+    match token
+    {
+        Token::Tempo(bpm) => Some(PreambleNode::Tempo{ literal, tempo: bpm }),
+        Token::Dynamic(level) => Some(PreambleNode::DynamicLevel{ literal, level }),
+        Token::Scale(scale) => Some(PreambleNode::Scale{ literal, scale: scale.clone() }),
+        Token::TimeSignature(ratio) => Some(PreambleNode::TimeSignature{ literal, ratio }),
+        Token::Endline() => Some(PreambleNode::Endline(literal)),
+        Token::Track(_) |
+        Token::ScaleDegree(_) |
+        Token::AbsolutePitch(_) |
+        Token::BeatAssert(_) |
+        Token::MeasureBar() |
+        Token::Section(_) |
+        Token::Note(_) |
+        Token::EndRepeat(_) |
+        Token::StartRepeat() => None,
+    }
+}
+
+fn eat_staff_atomic(parser: &mut Parser) -> ParseResult<StaffNode>
 {
     if let Some((literal, token)) = parser.take()
     {
-        if let Some(node) = atomic_token_to_ast_node(token.clone(), literal.clone())
+        if let Some(node) = atomic_token_to_staff_node(token.clone(), literal.clone())
         {
             return Ok(node);
         }
         else
         {
             return Err(SyntaxError::Unexpected(
-                "Expected an atomic token, but got".to_string(), token, literal));
+                "Expected an atomic staff token".to_string(), token, literal));
         }
     }
 
     Err(SyntaxError::Generic("Expected an atomic token, but nothing left".to_string()))
+}
+
+fn eat_preamble_atomic(parser: &mut Parser) -> ParseResult<PreambleNode>
+{
+    if let Some((literal, token)) = parser.take()
+    {
+        if let Some(node) = atomic_token_to_preamble_node(token.clone(), literal.clone())
+        {
+            return Ok(node);
+        }
+        else
+        {
+            return Err(SyntaxError::Unexpected(
+                "Expected an atomic preamble token".to_string(), token, literal));
+        }
+    }
+
+    Err(SyntaxError::Generic("Expected a preamble token, but nothing left".to_string()))
 }
 
 fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<StaffNode>>
@@ -315,17 +345,13 @@ fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<StaffNode>>
 
     while let Some((literal, token)) = parser.peek()
     {
-        if let Token::EndRepeat(_) = token
-        {
-            break;
-        }
-
         let node = match token
         {
+            Token::EndRepeat(_) => break,
             Token::Note(_) |
             Token::AbsolutePitch(_) |
             Token::Endline() |
-            Token::MeasureBar() => eat_atomic(parser),
+            Token::MeasureBar() => eat_staff_atomic(parser),
             _ => Err(SyntaxError::Unexpected("Illegal token in repeat block".to_string(),
                 token.clone(), literal.clone())),
         }?;
@@ -336,22 +362,18 @@ fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<StaffNode>>
     Ok(nodes)
 }
 
-fn node_to_string(node: &StaffNode, level: u32) -> String
+fn staff_node_to_string(node: &StaffNode, level: u32) -> String
 {
     let pad = (0..level*3).map(|_| " ").collect::<String>();
 
     match node
     {
-        StaffNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
         StaffNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
-        StaffNode::Scale{literal, ..} => format!("{}[scale] {}", pad, literal.literal),
         StaffNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
         StaffNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
         StaffNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
         StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
         StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
-        StaffNode::DynamicLevel{literal, ..}  => format!("{}[dyn] {}", pad, literal.literal),
-        StaffNode::TimeSignature { literal, .. } => format!("{}[ts] {}", pad, literal.literal),
         StaffNode::Endline { .. } => format!("{}[endline]", pad),
         StaffNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
         {
@@ -360,7 +382,7 @@ fn node_to_string(node: &StaffNode, level: u32) -> String
 
             for n in nodes
             {
-                segments.push(node_to_string(n, level + 1));
+                segments.push(staff_node_to_string(n, level + 1));
             }
 
             segments.join("\n")
@@ -372,11 +394,25 @@ fn node_to_string(node: &StaffNode, level: u32) -> String
 
             for n in nodes
             {
-                segments.push(node_to_string(n, level + 1));
+                segments.push(staff_node_to_string(n, level + 1));
             }
 
             segments.join("\n")
         },
+    }
+}
+
+fn preamble_node_to_string(node: &PreambleNode, level: u32) -> String
+{
+    let pad = (0..level*3).map(|_| " ").collect::<String>();
+
+    match node
+    {
+        PreambleNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
+        PreambleNode::DynamicLevel { literal, .. } => format!("{}[dyn] {}", pad, literal.literal),
+        PreambleNode::TimeSignature { literal, .. } => format!("{}[time] {}", pad, literal.literal),
+        PreambleNode::Scale { literal, .. } => format!("{}[scale] {}", pad, literal.literal),
+        PreambleNode::Endline(literal) => format!("{}[endline]", pad),
     }
 }
 
@@ -388,13 +424,13 @@ fn section_to_string(section: &SectionNode) -> String
     segments.push("      [preamble]".to_string());
     for n in &section.preamble
     {
-        segments.push(node_to_string(n, 3));
+        segments.push(preamble_node_to_string(n, 3));
     }
 
     segments.push("      [staff]".to_string());
     for n in &section.staff
     {
-        segments.push(node_to_string(n, 3));
+        segments.push(staff_node_to_string(n, 3));
     }
 
     segments.join("\n")
@@ -426,8 +462,8 @@ pub fn print_parse_error(error: &SyntaxError)
         },
         SyntaxError::Unexpected(msg, token, literal) =>
         {
-            println!("\n  Unexpected token: {} - {:?}, \"{}\", line {}, col {}\n",
-                msg, token, literal.literal, literal.lineno, literal.colno);
+            println!("\n  Unexpected token: {}\n    Problematic token -- \"{}\", line {}, col {}\n",
+                msg, literal.literal, literal.lineno, literal.colno);
         },
         SyntaxError::PreambleOrder(section, first, cur) =>
         {
