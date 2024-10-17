@@ -89,7 +89,7 @@ pub enum SyntaxError
 }
 
 #[derive(Debug, Clone)]
-struct SectionNode
+pub struct SectionNode
 {
     literal: Literal,
     name: String,
@@ -431,20 +431,27 @@ fn parsing_test()
     assert_ast_results("[: . ./2 :]",
         indoc! {"
         [top]
-           [repeat] x1
-              [note] .
-              [note] ./2
+           [section] <implicit-section>
+              [preamble]
+              [staff]
+                 [repeat] x1
+                    [note] .
+                    [note] ./2
+                 [endline]
         [end]"});
 
     assert_ast_results("---BIG--- F3 . . F2 ./3 duh:3/2",
         indoc! {"
         [top]
            [section] ---BIG---
-              [pitch] F3
-              [note] .
-              [note] .
-              [pitch] F2
-              [note] ./3
-              [note] duh:3/2
+              [preamble]
+              [staff]
+                 [pitch] F3
+                 [note] .
+                 [note] .
+                 [pitch] F2
+                 [note] ./3
+                 [note] duh:3/2
+                 [endline]
         [end]"});
 }
