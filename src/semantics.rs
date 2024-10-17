@@ -1,14 +1,14 @@
-// use crate::parser::{ASTNode, AST};
+// use crate::parser::{StaffNode, AST};
 // use crate::lexer::{DynamicLevel, Literal, Scale};
 
 // #[derive(Debug, Clone)]
 // pub enum SemanticError
 // {
 //     Generic(String),
-//     GenericNode(String, ASTNode)
+//     GenericNode(String, StaffNode)
 // }
 
-// fn make_section(nodes: &Vec<ASTNode>) -> Result<(), SemanticError>
+// fn make_section(nodes: &Vec<StaffNode>) -> Result<(), SemanticError>
 // {
 //     let mut preamble = true;
 
@@ -22,7 +22,7 @@
 //         {
 //             match node
 //             {
-//                 ASTNode::Tempo { literal, tempo } =>
+//                 StaffNode::Tempo { literal, tempo } =>
 //                 {
 //                     if section_tempo.is_some()
 //                     {
@@ -31,7 +31,7 @@
 //                     }
 //                     section_tempo = Some(*tempo);
 //                 }
-//                 ASTNode::Scale { literal, scale } =>
+//                 StaffNode::Scale { literal, scale } =>
 //                 {
 //                     if section_scale.is_some()
 //                     {
@@ -40,7 +40,7 @@
 //                     }
 //                     section_scale = Some(scale.clone());
 //                 },
-//                 ASTNode::DynamicLevel { literal, level } =>
+//                 StaffNode::DynamicLevel { literal, level } =>
 //                 {
 //                     if section_dynamic.is_some()
 //                     {
@@ -49,17 +49,17 @@
 //                     }
 //                     section_dynamic = Some(level.clone());
 //                 }
-//                 ASTNode::Note { .. } |
-//                 ASTNode::MeasureBar { .. } |
-//                 ASTNode::RepeatBlock { .. } |
-//                 ASTNode::AbsolutePitch { .. } |
-//                 ASTNode::ScaleDegree { .. } |
-//                 ASTNode::BeatAssert { .. } |
-//                 ASTNode::Track { .. } =>
+//                 StaffNode::Note { .. } |
+//                 StaffNode::MeasureBar { .. } |
+//                 StaffNode::RepeatBlock { .. } |
+//                 StaffNode::AbsolutePitch { .. } |
+//                 StaffNode::ScaleDegree { .. } |
+//                 StaffNode::BeatAssert { .. } |
+//                 StaffNode::Track { .. } =>
 //                 {
 //                     preamble = false;
 //                 },
-//                 ASTNode::Section { .. } =>
+//                 StaffNode::Section { .. } =>
 //                 {
 //                     return Err(SemanticError::GenericNode(
 //                         "Illegal directive in section preamble".to_string(), node.clone()));
@@ -70,25 +70,25 @@
 //         {
 //             match node
 //             {
-//                 ASTNode::Tempo { .. } |
-//                 ASTNode::Scale { .. } |
-//                 ASTNode::DynamicLevel { .. } =>
+//                 StaffNode::Tempo { .. } |
+//                 StaffNode::Scale { .. } |
+//                 StaffNode::DynamicLevel { .. } =>
 //                 {
 //                     return Err(SemanticError::GenericNode(
 //                         "Preamble directives are not allowed after the first staff element".to_string(),
 //                         node.clone()));
 //                 },
-//                 ASTNode::Note { .. } |
-//                 ASTNode::MeasureBar { .. } |
-//                 ASTNode::RepeatBlock { .. } |
-//                 ASTNode::AbsolutePitch { .. } |
-//                 ASTNode::ScaleDegree { .. } |
-//                 ASTNode::BeatAssert { .. } |
-//                 ASTNode::Track { .. } =>
+//                 StaffNode::Note { .. } |
+//                 StaffNode::MeasureBar { .. } |
+//                 StaffNode::RepeatBlock { .. } |
+//                 StaffNode::AbsolutePitch { .. } |
+//                 StaffNode::ScaleDegree { .. } |
+//                 StaffNode::BeatAssert { .. } |
+//                 StaffNode::Track { .. } =>
 //                 {
 //                     // neat
 //                 },
-//                 ASTNode::Section { .. } =>
+//                 StaffNode::Section { .. } =>
 //                 {
 //                     return Err(SemanticError::GenericNode(
 //                         "Illegal directive in section body".to_string(), node.clone()));
@@ -108,7 +108,7 @@
 //     {
 //         match node
 //         {
-//             ASTNode::Section { literal, name, nodes } =>
+//             StaffNode::Section { literal, name, nodes } =>
 //             {
 //                 make_section(nodes)
 //             }

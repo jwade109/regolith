@@ -10,32 +10,57 @@ struct Parser
 }
 
 #[derive(Debug, Clone)]
-pub enum ASTNode
+pub enum PreambleNode
 {
-    RepeatBlock
-    {
-        start_literal: Literal,
-        end_literal: Literal,
-        count: u8,
-        nodes: Vec<ASTNode>,
-    },
-    Section
-    {
-        literal: Literal,
-        name: String,
-        nodes: Vec<ASTNode>
-    },
-    AbsolutePitch
-    {
-        literal: Literal,
-        pitch: u8,
-    },
     Tempo
     {
         literal: Literal,
         tempo: u16,
     },
     Scale
+    {
+        literal: Literal,
+        scale: Scale,
+    },
+    DynamicLevel
+    {
+        literal: Literal,
+        level: DynamicLevel,
+    },
+    TimeSignature
+    {
+        literal: Literal,
+        ratio: Fraction,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum StaffNode
+{
+    RepeatBlock
+    {
+        start_literal: Literal,
+        end_literal: Literal,
+        count: u8,
+        nodes: Vec<StaffNode>,
+    },
+    Section
+    {
+        literal: Literal,
+        name: String,
+        nodes: Vec<StaffNode>
+    },
+    AbsolutePitch
+    {
+        literal: Literal,
+        pitch: u8,
+    },
+    Tempo // TODO delete
+    {
+        literal: Literal,
+        tempo: u16,
+    },
+    Scale // TODO delete
     {
         literal: Literal,
         scale: Scale,
@@ -64,12 +89,12 @@ pub enum ASTNode
     {
         literal: Literal,
     },
-    DynamicLevel
+    DynamicLevel // TODO delete
     {
         literal: Literal,
         level: DynamicLevel,
     },
-    TimeSignature
+    TimeSignature // TODO delete
     {
         literal: Literal,
         ratio: Fraction,
@@ -93,8 +118,8 @@ pub struct SectionNode
 {
     literal: Literal,
     name: String,
-    preamble: Vec<ASTNode>,
-    staff: Vec<ASTNode>
+    preamble: Vec<StaffNode>, // TODO PreambleNode
+    staff: Vec<StaffNode>
 }
 
 #[derive(Debug)]
@@ -221,7 +246,7 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
     Ok(SectionNode { literal: section_literal, name: section_name, preamble, staff })
 }
 
-fn eat_repeat_block(parser: &mut Parser) -> ParseResult<ASTNode>
+fn eat_repeat_block(parser: &mut Parser) -> ParseResult<StaffNode>
 {
     let (start_literal, start_token) = parser.take()
         .ok_or(SyntaxError::Generic("Expected token at start of repeat block".to_string()))?;
@@ -239,34 +264,34 @@ fn eat_repeat_block(parser: &mut Parser) -> ParseResult<ASTNode>
         .ok_or(SyntaxError::Generic("Unterminated repeat block".to_string()))?;
     if let Token::EndRepeat(count) = end_token
     {
-        return Ok(ASTNode::RepeatBlock{ start_literal, end_literal, count, nodes });
+        return Ok(StaffNode::RepeatBlock{ start_literal, end_literal, count, nodes });
     }
     Err(SyntaxError::Unexpected("Expected end repeat block token".to_string(),
         end_token.clone(), end_literal.clone()))
 }
 
-fn atomic_token_to_ast_node(token: Token, literal: Literal) -> Option<ASTNode>
+fn atomic_token_to_ast_node(token: Token, literal: Literal) -> Option<StaffNode>
 {
     match token
     {
-        Token::Note(note) => Some(ASTNode::Note{ literal, note }),
-        Token::Track(track_id) => Some(ASTNode::Track{ literal, track_id }),
-        Token::Tempo(bpm) => Some(ASTNode::Tempo{ literal, tempo: bpm }),
-        Token::Dynamic(level) => Some(ASTNode::DynamicLevel{ literal, level }),
-        Token::Scale(scale) => Some(ASTNode::Scale{ literal, scale: scale.clone() }),
-        Token::ScaleDegree(degree) => Some(ASTNode::ScaleDegree{ literal, degree }),
-        Token::AbsolutePitch(pitch) => Some(ASTNode::AbsolutePitch{ literal, pitch }),
-        Token::BeatAssert(beats) => Some(ASTNode::BeatAssert { literal, beats }),
-        Token::MeasureBar() => Some(ASTNode::MeasureBar { literal }),
-        Token::TimeSignature(ratio) => Some(ASTNode::TimeSignature{ literal, ratio }),
-        Token::Endline() => Some(ASTNode::Endline{ literal }),
+        Token::Note(note) => Some(StaffNode::Note{ literal, note }),
+        Token::Track(track_id) => Some(StaffNode::Track{ literal, track_id }),
+        Token::Tempo(bpm) => Some(StaffNode::Tempo{ literal, tempo: bpm }),
+        Token::Dynamic(level) => Some(StaffNode::DynamicLevel{ literal, level }),
+        Token::Scale(scale) => Some(StaffNode::Scale{ literal, scale: scale.clone() }),
+        Token::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ literal, degree }),
+        Token::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ literal, pitch }),
+        Token::BeatAssert(beats) => Some(StaffNode::BeatAssert { literal, beats }),
+        Token::MeasureBar() => Some(StaffNode::MeasureBar { literal }),
+        Token::TimeSignature(ratio) => Some(StaffNode::TimeSignature{ literal, ratio }),
+        Token::Endline() => Some(StaffNode::Endline{ literal }),
         Token::Section(_) |
         Token::EndRepeat(_) |
         Token::StartRepeat() => None,
     }
 }
 
-fn eat_atomic(parser: &mut Parser) -> ParseResult<ASTNode>
+fn eat_atomic(parser: &mut Parser) -> ParseResult<StaffNode>
 {
     if let Some((literal, token)) = parser.take()
     {
@@ -284,7 +309,7 @@ fn eat_atomic(parser: &mut Parser) -> ParseResult<ASTNode>
     Err(SyntaxError::Generic("Expected an atomic token, but nothing left".to_string()))
 }
 
-fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
+fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<StaffNode>>
 {
     let mut nodes = vec![];
 
@@ -311,24 +336,24 @@ fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
     Ok(nodes)
 }
 
-fn node_to_string(node: &ASTNode, level: u32) -> String
+fn node_to_string(node: &StaffNode, level: u32) -> String
 {
     let pad = (0..level*3).map(|_| " ").collect::<String>();
 
     match node
     {
-        ASTNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
-        ASTNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
-        ASTNode::Scale{literal, ..} => format!("{}[scale] {}", pad, literal.literal),
-        ASTNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
-        ASTNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
-        ASTNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
-        ASTNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
-        ASTNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
-        ASTNode::DynamicLevel{literal, ..}  => format!("{}[dyn] {}", pad, literal.literal),
-        ASTNode::TimeSignature { literal, .. } => format!("{}[ts] {}", pad, literal.literal),
-        ASTNode::Endline { .. } => format!("{}[endline]", pad),
-        ASTNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
+        StaffNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
+        StaffNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
+        StaffNode::Scale{literal, ..} => format!("{}[scale] {}", pad, literal.literal),
+        StaffNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
+        StaffNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
+        StaffNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
+        StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
+        StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
+        StaffNode::DynamicLevel{literal, ..}  => format!("{}[dyn] {}", pad, literal.literal),
+        StaffNode::TimeSignature { literal, .. } => format!("{}[ts] {}", pad, literal.literal),
+        StaffNode::Endline { .. } => format!("{}[endline]", pad),
+        StaffNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
         {
             let mut segments = vec![
                 format!("{}[repeat] x{}", pad, count)];
@@ -340,7 +365,7 @@ fn node_to_string(node: &ASTNode, level: u32) -> String
 
             segments.join("\n")
         },
-        ASTNode::Section{literal, name, nodes} =>
+        StaffNode::Section{literal, name, nodes} =>
         {
             let mut segments = vec![
                 format!("{}[section] {}", pad, literal.literal)];
