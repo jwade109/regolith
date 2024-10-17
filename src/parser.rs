@@ -1,5 +1,8 @@
 use crate::lexer::{Literal, Token, lex_multiline_string, RegoNote, DynamicLevel, Scale};
+use argparse::Parse;
+use fraction::error::ParseError;
 use indoc::indoc;
+use fraction::Fraction;
 
 struct Parser
 {
@@ -66,6 +69,15 @@ pub enum ASTNode
         literal: Literal,
         level: DynamicLevel,
     },
+    TimeSignature
+    {
+        literal: Literal,
+        ratio: Fraction,
+    },
+    Endline
+    {
+        literal: Literal
+    },
 }
 
 #[derive(Debug)]
@@ -73,12 +85,22 @@ pub enum SyntaxError
 {
     Generic(String),
     Unexpected(String, Token, Literal),
+    PreambleOrder(Literal, Literal, Literal),
+}
+
+#[derive(Debug, Clone)]
+struct SectionNode
+{
+    literal: Literal,
+    name: String,
+    preamble: Vec<ASTNode>,
+    staff: Vec<ASTNode>
 }
 
 #[derive(Debug)]
 pub struct AST
 {
-    pub nodes: Vec<ASTNode>,
+    pub sections: Vec<SectionNode>,
 }
 
 type ParseResult<T> = Result<T, SyntaxError>;
@@ -112,43 +134,36 @@ pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
 {
     let mut parser = Parser::new(tokens);
 
-    let mut nodes = vec![];
+    let mut sections = vec![];
 
     while let Some((literal, token)) = parser.peek()
     {
-        let node = match token
-        {
-            Token::AbsolutePitch(_) => eat_atomic(&mut parser),
-            Token::Tempo(_) => eat_atomic(&mut parser),
-            Token::Scale(_) => eat_atomic(&mut parser),
-            Token::Track(_) => eat_atomic(&mut parser),
-            Token::Note(_) => eat_atomic(&mut parser),
-            Token::BeatAssert(_) => eat_atomic(&mut parser),
-            Token::ScaleDegree(_) => eat_atomic(&mut parser),
-            Token::MeasureBar() => eat_atomic(&mut parser),
-            Token::Dynamic(_) => eat_atomic(&mut parser),
-            Token::Section(_) => eat_section(&mut parser),
-            Token::StartRepeat() => eat_repeat_block(&mut parser),
-            Token::EndRepeat(_) => Err(SyntaxError::Unexpected(
-                "Unexpected repeat block terminator".to_string(),
-                token.clone(), literal.clone())),
-        }?;
-
-        nodes.push(node);
+        let section = eat_section(&mut parser)?;
+        sections.push(section);
     }
 
-    Ok(AST{ nodes })
+    Ok(AST{ sections })
 }
 
-fn eat_section(parser: &mut Parser) -> ParseResult<ASTNode>
+fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
 {
-    let (section_literal, section_token) = parser.take().ok_or(
-        SyntaxError::Generic("Expected a section header".to_string()))?;
-    let section_name = if let Token::Section(name) = section_token { name }
-        else { return Err(SyntaxError::Unexpected(
-            "Expected a section header".to_string(), section_token, section_literal)); };
+    let (mut section_literal, section_token) = parser.peek_copy().ok_or(
+        SyntaxError::Generic("Encountered EOF while parsing section block".to_string()))?;
+    let section_name = if let Token::Section(ref name) = section_token
+    {
+        parser.take();
+        name.clone()
+    }
+    else
+    {
+        section_literal.literal = "<implicit-section>".to_string();
+        "".to_string()
+    };
 
-    let mut nodes = vec![];
+    let mut first_staff: Option<(Literal, Token)> = None;
+
+    let mut staff = vec![];
+    let mut preamble = vec![];
 
     while let Some((literal, token)) = parser.peek_copy()
     {
@@ -160,21 +175,50 @@ fn eat_section(parser: &mut Parser) -> ParseResult<ASTNode>
 
         let node = match token
         {
-            Token::Note(_) |
+            Token::Endline() => eat_atomic(parser),
             Token::Dynamic(_) |
             Token::Tempo(_) |
-            Token::MeasureBar() |
-            Token::AbsolutePitch(_) |
             Token::Scale(_) |
-            Token::Track(_) => eat_atomic(parser),
-            Token::StartRepeat() => eat_repeat_block(parser),
+            Token::TimeSignature(_) =>
+            {
+                if let Some(first) = first_staff.clone()
+                {
+                    Err(SyntaxError::PreambleOrder(section_literal.clone(), first.0, literal))
+                }
+                else
+                {
+                    eat_atomic(parser)
+                }
+            },
+            Token::MeasureBar() |
+            Token::Track(_) |
+            Token::ScaleDegree(_) |
+            Token::BeatAssert(_) |
+            Token::AbsolutePitch(_) |
+            Token::Note(_) =>
+            {
+                first_staff.get_or_insert((literal, token));
+                eat_atomic(parser)
+            },
+            Token::StartRepeat() =>
+            {
+                first_staff.get_or_insert((literal, token));
+                eat_repeat_block(parser)
+            },
             _ => Err(SyntaxError::Unexpected("Illegal token in section".to_string(), token, literal)),
         }?;
 
-        nodes.push(node);
+        if first_staff.is_none()
+        {
+            preamble.push(node);
+        }
+        else
+        {
+            staff.push(node);
+        }
     }
 
-    Ok(ASTNode::Section { literal: section_literal, name: section_name, nodes })
+    Ok(SectionNode { literal: section_literal, name: section_name, preamble, staff })
 }
 
 fn eat_repeat_block(parser: &mut Parser) -> ParseResult<ASTNode>
@@ -214,6 +258,8 @@ fn atomic_token_to_ast_node(token: Token, literal: Literal) -> Option<ASTNode>
         Token::AbsolutePitch(pitch) => Some(ASTNode::AbsolutePitch{ literal, pitch }),
         Token::BeatAssert(beats) => Some(ASTNode::BeatAssert { literal, beats }),
         Token::MeasureBar() => Some(ASTNode::MeasureBar { literal }),
+        Token::TimeSignature(ratio) => Some(ASTNode::TimeSignature{ literal, ratio }),
+        Token::Endline() => Some(ASTNode::Endline{ literal }),
         Token::Section(_) |
         Token::EndRepeat(_) |
         Token::StartRepeat() => None,
@@ -251,8 +297,9 @@ fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<ASTNode>>
 
         let node = match token
         {
-            Token::Note(_) => eat_atomic(parser),
-            Token::AbsolutePitch(_) => eat_atomic(parser),
+            Token::Note(_) |
+            Token::AbsolutePitch(_) |
+            Token::Endline() |
             Token::MeasureBar() => eat_atomic(parser),
             _ => Err(SyntaxError::Unexpected("Illegal token in repeat block".to_string(),
                 token.clone(), literal.clone())),
@@ -271,14 +318,16 @@ fn node_to_string(node: &ASTNode, level: u32) -> String
     match node
     {
         ASTNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
-        ASTNode::AbsolutePitch{literal, ..} => format!("{}[abspitch] {}", pad, literal.literal),
+        ASTNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
         ASTNode::Scale{literal, ..} => format!("{}[scale] {}", pad, literal.literal),
         ASTNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
         ASTNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
         ASTNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
-        ASTNode::ScaleDegree{literal, ..}  => format!("{}[scaledeg] {}", pad, literal.literal),
+        ASTNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
         ASTNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
         ASTNode::DynamicLevel{literal, ..}  => format!("{}[dyn] {}", pad, literal.literal),
+        ASTNode::TimeSignature { literal, .. } => format!("{}[ts] {}", pad, literal.literal),
+        ASTNode::Endline { .. } => format!("{}[endline]", pad),
         ASTNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
         {
             let mut segments = vec![
@@ -306,12 +355,32 @@ fn node_to_string(node: &ASTNode, level: u32) -> String
     }
 }
 
+fn section_to_string(section: &SectionNode) -> String
+{
+    let mut segments = vec![
+        format!("   [section] {}", section.literal.literal)];
+
+    segments.push("      [preamble]".to_string());
+    for n in &section.preamble
+    {
+        segments.push(node_to_string(n, 3));
+    }
+
+    segments.push("      [staff]".to_string());
+    for n in &section.staff
+    {
+        segments.push(node_to_string(n, 3));
+    }
+
+    segments.join("\n")
+}
+
 fn tree_to_string(tree: &AST) -> String
 {
     let mut segments = vec!["[top]".to_string()];
-    for node in &tree.nodes
+    for section in &tree.sections
     {
-        segments.push(node_to_string(node, 1));
+        segments.push(section_to_string(section));
     }
     segments.push("[end]".to_string());
     segments.join("\n")
@@ -335,6 +404,16 @@ pub fn print_parse_error(error: &SyntaxError)
             println!("\n  Unexpected token: {} - {:?}, \"{}\", line {}, col {}\n",
                 msg, token, literal.literal, literal.lineno, literal.colno);
         },
+        SyntaxError::PreambleOrder(section, first, cur) =>
+        {
+            println!("\n  Cannot declare preamble element after staff has begun.");
+            println!("    In this section --          \"{}\", line {}, col {}",
+                section.literal, section.lineno, section.colno);
+            println!("    Staff begins here --        \"{}\", line {}, col {}",
+                first.literal, first.lineno, first.colno);
+            println!("    Problematic element is --   \"{}\", line {}, col {}\n",
+                cur.literal, cur.lineno, cur.colno);
+        }
     }
 }
 
@@ -361,10 +440,10 @@ fn parsing_test()
         indoc! {"
         [top]
            [section] ---BIG---
-              [abspitch] F3
+              [pitch] F3
               [note] .
               [note] .
-              [abspitch] F2
+              [pitch] F2
               [note] ./3
               [note] duh:3/2
         [end]"});

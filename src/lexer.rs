@@ -160,7 +160,9 @@ pub enum Token
     ScaleDegree(i32),
     Dynamic(DynamicLevel),
     MeasureBar(),
-    Section(String)
+    Section(String),
+    TimeSignature(Fraction),
+    Endline(),
 }
 
 type LexerResult<T> = Result<T, LexerError>;
@@ -189,6 +191,14 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Lexe
             };
             result.push(l);
         }
+
+        result.push(Literal
+        {
+            colno: line.len(),
+            filename: filename.to_string(),
+            lineno,
+            literal: "<line-terminator>".to_string()
+        });
     }
 
     Ok(result)
@@ -243,6 +253,14 @@ pub fn read_literals_from_markdown(filename: &str) -> LexerResult<Vec<Literal>>
             };
             result.push(l);
         }
+
+        result.push(Literal
+        {
+            colno: line.len() + 1,
+            filename: filename.to_string(),
+            lineno: lineno + 1,
+            literal: "<line-terminator>".to_string()
+        });
     }
 
     Ok(result)
@@ -326,6 +344,11 @@ fn get_nth_capture(captures: &[Option<String>], i: usize) -> Option<String>
 
 fn lex_literal(literal: &str) -> Option<Token>
 {
+    if literal == "<line-terminator>"
+    {
+        return Some(Token::Endline());
+    }
+
     let measure_bar_re = regex!(r"^\|$");
     let start_repeat_re = regex!(r"^\[:$");
     let stop_repeat_re = regex!(r"^:\](x(\d*))?$");
@@ -339,6 +362,7 @@ fn lex_literal(literal: &str) -> Option<Token>
     let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO$");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
     let section_marker_re = regex!(r"^---([^\s-]*)---$");
+    let time_signature_re = regex!(r"^(\d+)\/(\d+)$");
 
     lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
     {
@@ -472,6 +496,13 @@ fn lex_literal(literal: &str) -> Option<Token>
     {
         let name = get_nth_capture(cap, 1)?;
         Some(Token::Section(name))
+    });
+
+    lex_rule!(&literal, time_signature_re, |cap: &[Option<String>]|
+    {
+        let numer : u8 = get_nth_capture(cap, 1)?.parse().ok()?;
+        let denom : u8 = get_nth_capture(cap, 2)?.parse().ok()?;
+        Some(Token::TimeSignature(Fraction::new(numer, denom)))
     });
 
     None

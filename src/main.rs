@@ -1,7 +1,7 @@
 #![allow(warnings)]
 
 use argparse::{ArgumentParser, Store};
-use semantics::do_semantics;
+// use semantics::do_semantics;
 use crate::lexer::{lex_markdown, print_lexer_error};
 use crate::parser::{parse_to_ast, print_tree, print_parse_error};
 // use crate::compiler::compile;
@@ -50,7 +50,7 @@ fn main()
     };
 
     print_tree(&tree);
-    do_semantics(&tree);
+    // do_semantics(&tree);
 
     // println!("{} -> {}", &inpath, &outpath);
     // compile(&inpath, &outpath)?;
