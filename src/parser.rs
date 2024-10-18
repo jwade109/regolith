@@ -38,13 +38,14 @@ pub enum PreambleNode
 #[derive(Debug, Clone)]
 pub enum StaffNode
 {
-    RepeatBlock
-    {
-        start_literal: Literal,
-        end_literal: Literal,
-        count: u8,
-        nodes: Vec<StaffNode>,
-    },
+    Repeat(Literal), // TODO making this atomic for now
+    // RepeatBlock
+    // {
+    //     start_literal: Literal,
+    //     end_literal: Literal,
+    //     count: u8,
+    //     nodes: Vec<MeasureNode>,
+    // },
     Section
     {
         literal: Literal,
@@ -92,6 +93,7 @@ pub enum SyntaxError
     Generic(String),
     Unexpected(String, Token, Literal),
     PreambleOrder(Literal, Literal, Literal),
+    EmptyMeasure(Literal, Literal),
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +102,14 @@ pub struct SectionNode
     literal: Literal,
     name: String,
     preamble: Vec<PreambleNode>,
+    measures: Vec<MeasureNode>
+}
+
+#[derive(Debug, Clone)]
+pub struct MeasureNode
+{
+    start: Literal,
+    end: Literal,
     staff: Vec<StaffNode>
 }
 
@@ -168,7 +178,7 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
 
     let mut first_staff: Option<Literal> = None;
     let mut preamble: Vec<PreambleNode> = vec![];
-    let mut staff: Vec<StaffNode> = vec![];
+    let mut measures: Vec<MeasureNode> = vec![];
 
     // parse the preamble
     while let Some((literal, token)) = parser.peek_copy()
@@ -191,6 +201,15 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
 
         preamble.push(node);
     }
+
+    preamble = preamble.into_iter().filter(|node|
+    {
+        match node
+        {
+            &PreambleNode::Endline { .. } => false,
+            _ => true,
+        }
+    }).collect();
 
     // parse the staff
     while let Some((literal, token)) = parser.peek_copy()
@@ -218,48 +237,58 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
             Token::ScaleDegree(_) |
             Token::BeatAssert(_) |
             Token::AbsolutePitch(_) |
-            Token::Note(_) =>
+            Token::Note(_) |
+            Token::StartRepeat() |
+            Token::EndRepeat(_) =>
             {
                 first_staff.get_or_insert(literal);
-                eat_staff_atomic(parser)
-            },
-            Token::StartRepeat() =>
-            {
-                first_staff.get_or_insert(literal);
-                eat_repeat_block(parser)
-            },
+                eat_measure_block(parser)
+            }
+            // Token::Note(_) =>
+            // {
+            //     first_staff.get_or_insert(literal);
+            //     eat_staff_atomic(parser)
+            // },
+            // Token::StartRepeat() =>
+            // {
+            //     first_staff.get_or_insert(literal);
+            //     eat_repeat_block(parser)
+            // },
             _ => Err(SyntaxError::Unexpected("Illegal token in section".to_string(), token, literal)),
         }?;
 
-        staff.push(node);
+        if let Some(n) = node
+        {
+            measures.push(n);
+        }
     }
 
-    Ok(SectionNode { literal: section_literal, name: section_name, preamble, staff })
+    Ok(SectionNode { literal: section_literal, name: section_name, preamble, measures })
 }
 
-fn eat_repeat_block(parser: &mut Parser) -> ParseResult<StaffNode>
-{
-    let (start_literal, start_token) = parser.take()
-        .ok_or(SyntaxError::Generic("Expected token at start of repeat block".to_string()))?;
-    if let Token::StartRepeat() = start_token
-    {
-        // great!
-    }
-    else
-    {
-        return Err(SyntaxError::Unexpected(
-            "Expected a repeat block initiator".to_string(), start_token, start_literal));
-    }
-    let nodes = eat_repeat_block_interior(parser)?;
-    let (end_literal, end_token) = parser.take()
-        .ok_or(SyntaxError::Generic("Unterminated repeat block".to_string()))?;
-    if let Token::EndRepeat(count) = end_token
-    {
-        return Ok(StaffNode::RepeatBlock{ start_literal, end_literal, count, nodes });
-    }
-    Err(SyntaxError::Unexpected("Expected end repeat block token".to_string(),
-        end_token.clone(), end_literal.clone()))
-}
+// fn eat_repeat_block(parser: &mut Parser) -> ParseResult<StaffNode>
+// {
+//     let (start_literal, start_token) = parser.take()
+//         .ok_or(SyntaxError::Generic("Expected token at start of repeat block".to_string()))?;
+//     if let Token::StartRepeat() = start_token
+//     {
+//         // great!
+//     }
+//     else
+//     {
+//         return Err(SyntaxError::Unexpected(
+//             "Expected a repeat block initiator".to_string(), start_token, start_literal));
+//     }
+//     let nodes = eat_repeat_block_interior(parser)?;
+//     let (end_literal, end_token) = parser.take()
+//         .ok_or(SyntaxError::Generic("Unterminated repeat block".to_string()))?;
+//     if let Token::EndRepeat(count) = end_token
+//     {
+//         return Ok(StaffNode::Repeat(literal));
+//     }
+//     Err(SyntaxError::Unexpected("Expected end repeat block token".to_string(),
+//         end_token.clone(), end_literal.clone()))
+// }
 
 fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNode>
 {
@@ -276,9 +305,12 @@ fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNod
         Token::Dynamic(_) |
         Token::Scale(_) |
         Token::TimeSignature(_) |
-        Token::Section(_) |
+        Token::Section(_) => None,
         Token::EndRepeat(_) |
-        Token::StartRepeat() => None,
+        Token::StartRepeat() =>
+        {
+            Some(StaffNode::Repeat(literal))
+        },
     }
 }
 
@@ -339,27 +371,95 @@ fn eat_preamble_atomic(parser: &mut Parser) -> ParseResult<PreambleNode>
     Err(SyntaxError::Generic("Expected a preamble token, but nothing left".to_string()))
 }
 
-fn eat_repeat_block_interior(parser: &mut Parser) -> ParseResult<Vec<StaffNode>>
+fn eat_measure_block(parser: &mut Parser) -> ParseResult<Option<MeasureNode>>
 {
-    let mut nodes = vec![];
+    let mut staff = vec![];
+    let mut skip_next_bar = true;
+
+    let mut measure_start: Option<Literal> = None;
+    let mut measure_end: Option<Literal> = None;
 
     while let Some((literal, token)) = parser.peek()
     {
+        measure_start.get_or_insert(literal.clone());
+        measure_end = Some(literal.clone());
+
         let node = match token
         {
-            Token::EndRepeat(_) => break,
-            Token::Note(_) |
+            Token::StartRepeat() |
+            Token::EndRepeat(_) |
+            Token::MeasureBar() =>
+            {
+                if skip_next_bar
+                {
+                    parser.take();
+                    skip_next_bar = false;
+                    None
+                }
+                else
+                {
+                    break
+                }
+            }
+            Token::Section(_) =>
+            {
+                break
+            }
+            Token::EndRepeat(_) |
             Token::AbsolutePitch(_) |
+            Token::ScaleDegree(_) |
+            Token::BeatAssert(_) |
             Token::Endline() |
-            Token::MeasureBar() => eat_staff_atomic(parser),
-            _ => Err(SyntaxError::Unexpected("Illegal token in repeat block".to_string(),
-                token.clone(), literal.clone())),
-        }?;
+            Token::Track(_) |
+            Token::Note(_) =>
+            {
+                skip_next_bar = false;
+                Some(eat_staff_atomic(parser))
+            },
+            _ => Some(Err(SyntaxError::Unexpected("Illegal token in measure block".to_string(),
+                token.clone(), literal.clone()))),
+        };
 
-        nodes.push(node);
+        if let Some(n) = node
+        {
+            staff.push(n?);
+        }
     }
 
-    Ok(nodes)
+    let contains_endline = staff.iter().any(|node|
+    {
+        match node
+        {
+            StaffNode::Endline { .. } => true,
+            _ => false,
+        }
+    });
+
+    let start = measure_start.ok_or(
+        SyntaxError::Generic("No start token for measure".to_string()))?;
+    let end = measure_end.ok_or(
+        SyntaxError::Generic("No end token for measure".to_string()))?;
+
+    if staff.is_empty()
+    {
+        return Err(SyntaxError::EmptyMeasure(start, end))
+    }
+
+    if contains_endline && staff.len() == 1
+    {
+        return Ok(None)
+    }
+
+    staff = staff.into_iter().filter(|node|
+    {
+        match node
+        {
+            StaffNode::Endline { .. } => false,
+            _ => true,
+        }
+    }).collect();
+
+    Ok(Some(MeasureNode { start, end, staff }))
 }
 
 fn staff_node_to_string(node: &StaffNode, level: u32) -> String
@@ -375,18 +475,7 @@ fn staff_node_to_string(node: &StaffNode, level: u32) -> String
         StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
         StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
         StaffNode::Endline { .. } => format!("{}[endline]", pad),
-        StaffNode::RepeatBlock{start_literal, end_literal, count, nodes} =>
-        {
-            let mut segments = vec![
-                format!("{}[repeat] x{}", pad, count)];
-
-            for n in nodes
-            {
-                segments.push(staff_node_to_string(n, level + 1));
-            }
-
-            segments.join("\n")
-        },
+        StaffNode::Repeat(literal) => format!("{}[repeat] {}", pad, literal.literal),
         StaffNode::Section{literal, name, nodes} =>
         {
             let mut segments = vec![
@@ -416,6 +505,20 @@ fn preamble_node_to_string(node: &PreambleNode, level: u32) -> String
     }
 }
 
+impl MeasureNode
+{
+    fn to_string(&self, level: u32) -> String
+    {
+        let mut segments = vec![];
+        segments.push(format!("         [measure] {} .. {}", self.start.literal, self.end.literal));
+        for n in &self.staff
+        {
+            segments.push(staff_node_to_string(n, level + 1))
+        }
+        segments.join("\n")
+    }
+}
+
 fn section_to_string(section: &SectionNode) -> String
 {
     let mut segments = vec![
@@ -428,9 +531,9 @@ fn section_to_string(section: &SectionNode) -> String
     }
 
     segments.push("      [staff]".to_string());
-    for n in &section.staff
+    for m in &section.measures
     {
-        segments.push(staff_node_to_string(n, 3));
+        segments.push(m.to_string(3));
     }
 
     segments.join("\n")
@@ -474,7 +577,15 @@ pub fn print_parse_error(error: &SyntaxError)
                 first.literal, first.lineno, first.colno);
             println!("    Problematic element is --   \"{}\", line {}, col {}\n",
                 cur.literal, cur.lineno, cur.colno);
-        }
+        },
+        SyntaxError::EmptyMeasure(start, end) =>
+        {
+            println!("\n  Empty measure.");
+            println!("    Measure starts here -- \"{}\", line {}, col {}",
+                start.literal, start.lineno, start.colno);
+            println!("    Measure ends here -- \"{}\", line {}, col {}\n",
+                end.literal, end.lineno, end.colno);
+        },
     }
 }
 

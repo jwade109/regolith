@@ -118,6 +118,7 @@ pub struct Literal
     pub filename: String,
     pub lineno: usize,
     pub colno: usize,
+    pub idno: usize
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -170,6 +171,7 @@ type LexerResult<T> = Result<T, LexerError>;
 pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> LexerResult<Vec<Literal>>
 {
     let mut result = Vec::new();
+    let mut idno = 0;
 
     let reg = regex!(r"[^\s]+");
 
@@ -187,8 +189,10 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Lexe
                 colno: m.start(),
                 filename: filename.to_string(),
                 lineno,
-                literal: m.as_str().to_string()
+                literal: m.as_str().to_string(),
+                idno
             };
+            idno += 1;
             result.push(l);
         }
 
@@ -197,8 +201,10 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Lexe
             colno: line.len(),
             filename: filename.to_string(),
             lineno,
-            literal: "<line-terminator>".to_string()
+            literal: "<line-terminator>".to_string(),
+            idno
         });
+        idno += 1;
     }
 
     Ok(result)
@@ -213,6 +219,7 @@ fn read_literals_from_file(filename: &str) -> LexerResult<Vec<Literal>>
 pub fn read_literals_from_markdown(filename: &str) -> LexerResult<Vec<Literal>>
 {
     let mut result = Vec::new();
+    let mut idno = 0;
 
     let reg = regex!(r"[^\s]+");
 
@@ -249,8 +256,10 @@ pub fn read_literals_from_markdown(filename: &str) -> LexerResult<Vec<Literal>>
                 colno: m.start() + 1,
                 filename: filename.to_string(),
                 lineno: lineno + 1,
-                literal: m.as_str().to_string()
+                literal: m.as_str().to_string(),
+                idno
             };
+            idno += 1;
             result.push(l);
         }
 
@@ -259,8 +268,10 @@ pub fn read_literals_from_markdown(filename: &str) -> LexerResult<Vec<Literal>>
             colno: line.len() + 1,
             filename: filename.to_string(),
             lineno: lineno + 1,
-            literal: "<line-terminator>".to_string()
+            literal: "<line-terminator>".to_string(),
+            idno
         });
+        idno += 1;
     }
 
     Ok(result)
