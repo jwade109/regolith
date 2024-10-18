@@ -11,7 +11,9 @@ os.makedirs("songs", exist_ok=True)
 
 for reg in reg_files:
     print(reg)
-    os.system(f"cargo run -- {reg}")
+    ret = os.system(f"cargo run -- {reg}")
+    if ret:
+        break
     # out = os.path.join("songs", os.path.basename(reg).replace(".reg", ".mp3"))
     # if os.path.exists(out):
     #     print(out)

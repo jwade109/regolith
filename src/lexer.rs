@@ -156,7 +156,6 @@ pub enum Token
     Note(RegoNote),
     StartRepeat(),
     EndRepeat(u8),
-    BeatAssert(i32),
     Scale(Scale),
     ScaleDegree(i32),
     Dynamic(DynamicLevel),
@@ -363,7 +362,6 @@ fn lex_literal(literal: &str) -> Option<Token>
     let measure_bar_re = regex!(r"^\|$");
     let start_repeat_re = regex!(r"^\[:$");
     let stop_repeat_re = regex!(r"^:\](x(\d*))?$");
-    let beat_assert_re = regex!(r"^@(\d+)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
     let track_token_re = regex!(r"^\[([^\s-]*)\]$");
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
@@ -372,7 +370,7 @@ fn lex_literal(literal: &str) -> Option<Token>
     let scale_decl_re = regex!(r"^([A-G]\d*[#b]?)(\[(\d+)\]|PENTA|MAJOR|MINOR|CHROM)?$");
     let dynamic_decl_re = regex!(r"^FORTISSIMO|FORTE|MEZZOFORTE|MEZZOPIANO|PIANO|PIANISSIMO$");
     let rest_decl_re = regex!(r"^-(:(\d+))?(\/(\d+))?$");
-    let section_marker_re = regex!(r"^---([^\s-]*)---$");
+    let section_marker_re = regex!(r"^===([^\s-]*)===$");
     let time_signature_re = regex!(r"^(\d+)\/(\d+)$");
 
     lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
@@ -432,12 +430,6 @@ fn lex_literal(literal: &str) -> Option<Token>
             1
         };
         Some(Token::EndRepeat(times))
-    });
-
-    lex_rule!(&literal, beat_assert_re, |cap: &[Option<String>]|
-    {
-        let beats : i32 = get_nth_capture(cap, 1)?.parse().unwrap();
-        Some(Token::BeatAssert(beats))
     });
 
     lex_rule!(&literal, scale_decl_re, |cap: &[Option<String>]|
@@ -665,17 +657,6 @@ fn repeat_lexing()
 }
 
 #[test]
-fn beats_assert_lexing()
-{
-    lex_assert!("@16",   Token::BeatAssert(16));
-    lex_assert!("@32",   Token::BeatAssert(32));
-    lex_assert!("@27",   Token::BeatAssert(27));
-    lex_assert!("@0",    Token::BeatAssert(0));
-    lex_assert!("@2452", Token::BeatAssert(2452));
-    lex_nope!("@-3");
-}
-
-#[test]
 fn bpm_lexing()
 {
     lex_assert!("120BPM",  Token::Tempo(120));
@@ -709,10 +690,10 @@ fn garbage_lexing()
 #[test]
 fn section_lexing()
 {
-    lex_assert!("------",      Token::Section("".to_string()));
-    lex_assert!("---hello---", Token::Section("hello".to_string()));
-    lex_assert!("---GOO---",   Token::Section("GOO".to_string()));
-    lex_assert!("---34g---",   Token::Section("34g".to_string()));
+    lex_assert!("======",      Token::Section("".to_string()));
+    lex_assert!("===hello===", Token::Section("hello".to_string()));
+    lex_assert!("===GOO===",   Token::Section("GOO".to_string()));
+    lex_assert!("===34g===",   Token::Section("34g".to_string()));
 }
 
 pub fn print_lexer_error(error: &LexerError)

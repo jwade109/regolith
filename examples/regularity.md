@@ -5,9 +5,9 @@
 duw duw duw duw duw
 duw duw duw duw duw
 duw duw duw duw duw
-duw duw duw duw duw @20
 duw duw duw duw duw
 duw duw duw duw duw
 duw duw duw duw duw
-duw duw duw duw duw @40
+duw duw duw duw duw
+duw duw duw duw duw
 ```

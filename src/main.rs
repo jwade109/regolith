@@ -12,7 +12,7 @@ mod moonbase;
 mod parser;
 mod semantics;
 
-fn main()
+fn main() -> Result<(), ()>
 {
     let mut inpath = String::new();
     let mut outpath = String::new();
@@ -35,7 +35,7 @@ fn main()
         Err(error) =>
         {
             print_lexer_error(&error);
-            return;
+            return Err(());
         },
     };
 
@@ -45,11 +45,14 @@ fn main()
         Err(error) =>
         {
             print_parse_error(&error);
-            return;
+            return Err(());
         }
     };
 
     print_tree(&tree);
+
+    return Ok(());
+
     // do_semantics(&tree);
 
     // println!("{} -> {}", &inpath, &outpath);

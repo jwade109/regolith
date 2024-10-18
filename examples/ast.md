@@ -5,19 +5,21 @@ Hello!
 ```regolith
 CMAJOR
 
-4/4 .
+4/4
 
-------
+-/2
+
+======
 
 F3
 
-------
+======
 
 120BPM
 
 [: ./2 | F2 ./3 | . . :] [2] . |
 
----SECTION3---
+===SECTION3===
 
 60BPM F2 . . .
 
@@ -26,7 +28,7 @@ F3
 plaintext embedded in source code is baller
 
 ```regolith
-------
+======
 CMAJOR 120BPM F3 . ./2 G3 .:3
 ```
 
@@ -42,13 +44,13 @@ The abstract syntax tree for this file is
       [staff]
          [note] .
          [endline]
-   [section] ------
+   [section] ======
       [preamble]
          [endline]
       [staff]
          [pitch] F3
          [endline]
-   [section] ------
+   [section] ======
       [preamble]
          [endline]
          [tempo] 120BPM
@@ -67,7 +69,7 @@ The abstract syntax tree for this file is
          [note] .
          [mb] |
          [endline]
-   [section] ---SECTION3---
+   [section] ===SECTION3===
       [preamble]
          [endline]
          [tempo] 60BPM
@@ -77,7 +79,7 @@ The abstract syntax tree for this file is
          [note] .
          [note] .
          [endline]
-   [section] ------
+   [section] ======
       [preamble]
          [endline]
          [scale] CMAJOR

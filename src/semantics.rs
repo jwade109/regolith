@@ -54,7 +54,6 @@
 //                 StaffNode::RepeatBlock { .. } |
 //                 StaffNode::AbsolutePitch { .. } |
 //                 StaffNode::ScaleDegree { .. } |
-//                 StaffNode::BeatAssert { .. } |
 //                 StaffNode::Track { .. } =>
 //                 {
 //                     preamble = false;
@@ -83,7 +82,6 @@
 //                 StaffNode::RepeatBlock { .. } |
 //                 StaffNode::AbsolutePitch { .. } |
 //                 StaffNode::ScaleDegree { .. } |
-//                 StaffNode::BeatAssert { .. } |
 //                 StaffNode::Track { .. } =>
 //                 {
 //                     // neat

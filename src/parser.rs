@@ -67,11 +67,6 @@ pub enum StaffNode
         literal: Literal,
         track_id: String,
     },
-    BeatAssert
-    {
-        literal: Literal,
-        beats: i32,
-    },
     ScaleDegree
     {
         literal: Literal,
@@ -235,7 +230,6 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
             Token::MeasureBar() |
             Token::Track(_) |
             Token::ScaleDegree(_) |
-            Token::BeatAssert(_) |
             Token::AbsolutePitch(_) |
             Token::Note(_) |
             Token::StartRepeat() |
@@ -298,7 +292,6 @@ fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNod
         Token::Track(track_id) => Some(StaffNode::Track{ literal, track_id }),
         Token::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ literal, degree }),
         Token::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ literal, pitch }),
-        Token::BeatAssert(beats) => Some(StaffNode::BeatAssert { literal, beats }),
         Token::MeasureBar() => Some(StaffNode::MeasureBar { literal }),
         Token::Endline() => Some(StaffNode::Endline{ literal }),
         Token::Tempo(_) |
@@ -326,7 +319,6 @@ fn atomic_token_to_preamble_node(token: Token, literal: Literal) -> Option<Pream
         Token::Track(_) |
         Token::ScaleDegree(_) |
         Token::AbsolutePitch(_) |
-        Token::BeatAssert(_) |
         Token::MeasureBar() |
         Token::Section(_) |
         Token::Note(_) |
@@ -408,7 +400,6 @@ fn eat_measure_block(parser: &mut Parser) -> ParseResult<Option<MeasureNode>>
             Token::EndRepeat(_) |
             Token::AbsolutePitch(_) |
             Token::ScaleDegree(_) |
-            Token::BeatAssert(_) |
             Token::Endline() |
             Token::Track(_) |
             Token::Note(_) =>
@@ -471,7 +462,6 @@ fn staff_node_to_string(node: &StaffNode, level: u32) -> String
         StaffNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
         StaffNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
         StaffNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
-        StaffNode::BeatAssert{literal, ..} => format!("{}[beats] {}", pad, literal.literal),
         StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
         StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
         StaffNode::Endline { .. } => format!("{}[endline]", pad),
