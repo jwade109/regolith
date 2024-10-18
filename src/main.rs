@@ -1,11 +1,12 @@
 #![allow(warnings)]
 
 use argparse::{ArgumentParser, Store};
-// use semantics::do_semantics;
-use crate::lexer::{lex_markdown, print_lexer_error};
-use crate::parser::{parse_to_ast, print_tree, print_parse_error};
+use semantics::do_semantics;
+use crate::lexer::lex_markdown;
+use crate::parser::{parse_to_ast, print_tree, print_error};
 // use crate::compiler::compile;
 
+mod types;
 mod lexer;
 mod compiler;
 mod moonbase;
@@ -34,7 +35,7 @@ fn main() -> Result<(), ()>
         Ok(tokens) => tokens,
         Err(error) =>
         {
-            print_lexer_error(&error);
+            print_error(&error);
             return Err(());
         },
     };
@@ -44,12 +45,27 @@ fn main() -> Result<(), ()>
         Ok(tree) => tree,
         Err(error) =>
         {
-            print_parse_error(&error);
+            print_error(&error);
             return Err(());
         }
     };
 
     print_tree(&tree);
+
+    let res = match do_semantics(&tree)
+    {
+        Ok(comp) => comp,
+        Err(error) =>
+        {
+            print_error(&error);
+            return Err(());
+        }
+    };
+
+    for section in res.sections
+    {
+        println!("{}", section.to_string());
+    }
 
     return Ok(());
 

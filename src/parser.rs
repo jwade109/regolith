@@ -1,8 +1,7 @@
-use crate::lexer::{Literal, Token, lex_multiline_string, RegoNote, DynamicLevel, Scale};
-use argparse::Parse;
-use fraction::error::ParseError;
+use crate::types::*;
+use crate::lexer::lex_multiline_string;
 use indoc::indoc;
-use fraction::Fraction;
+use colored::Colorize;
 
 struct Parser
 {
@@ -30,7 +29,7 @@ pub enum PreambleNode
     TimeSignature
     {
         literal: Literal,
-        ratio: Fraction,
+        ratio: TimeSignature,
     },
     Endline(Literal),
 }
@@ -82,39 +81,24 @@ pub enum StaffNode
     },
 }
 
-#[derive(Debug)]
-pub enum SyntaxError
-{
-    Generic(String),
-    Unexpected(String, Token, Literal),
-    PreambleOrder(Literal, Literal, Literal),
-    EmptyMeasure(Literal, Literal),
-}
-
 #[derive(Debug, Clone)]
 pub struct SectionNode
 {
-    literal: Literal,
-    name: String,
-    preamble: Vec<PreambleNode>,
-    measures: Vec<MeasureNode>
+    pub literal: Literal,
+    pub name: String,
+    pub preamble: Vec<PreambleNode>,
+    pub measures: Vec<MeasureNode>
 }
 
 #[derive(Debug, Clone)]
 pub struct MeasureNode
 {
-    start: Literal,
-    end: Literal,
-    staff: Vec<StaffNode>
+    pub start: Literal,
+    pub end: Literal,
+    pub staff: Vec<StaffNode>
 }
 
-#[derive(Debug)]
-pub struct AST
-{
-    pub sections: Vec<SectionNode>,
-}
-
-type ParseResult<T> = Result<T, SyntaxError>;
+pub type AST = Vec<SectionNode>;
 
 impl Parser
 {
@@ -138,10 +122,9 @@ impl Parser
     {
         return self.tokens.pop()
     }
-
 }
 
-pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
+pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> CompileResult<AST>
 {
     let mut parser = Parser::new(tokens);
 
@@ -153,13 +136,13 @@ pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> ParseResult<AST>
         sections.push(section);
     }
 
-    Ok(AST{ sections })
+    Ok(sections)
 }
 
-fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
+fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
 {
     let (mut section_literal, section_token) = parser.peek_copy().ok_or(
-        SyntaxError::Generic("Encountered EOF while parsing section block".to_string()))?;
+        CompileError::GenericSyntax("Encountered EOF while parsing section block".to_string()))?;
     let section_name = if let Token::Section(ref name) = section_token
     {
         parser.take();
@@ -219,11 +202,11 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
             {
                 if let Some(ref first) = first_staff
                 {
-                    Err(SyntaxError::PreambleOrder(section_literal.clone(), first.clone(), literal))
+                    Err(CompileError::PreambleOrder(section_literal.clone(), first.clone(), literal))
                 }
                 else
                 {
-                    Err(SyntaxError::Generic("Expected a staff element".to_string()))
+                    Err(CompileError::GenericSyntax("Expected a staff element".to_string()))
                 }
             },
             Token::Endline() |
@@ -248,7 +231,7 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
             //     first_staff.get_or_insert(literal);
             //     eat_repeat_block(parser)
             // },
-            _ => Err(SyntaxError::Unexpected("Illegal token in section".to_string(), token, literal)),
+            _ => Err(CompileError::Unexpected("Illegal token in section".to_string(), token, literal)),
         }?;
 
         if let Some(n) = node
@@ -260,27 +243,27 @@ fn eat_section(parser: &mut Parser) -> ParseResult<SectionNode>
     Ok(SectionNode { literal: section_literal, name: section_name, preamble, measures })
 }
 
-// fn eat_repeat_block(parser: &mut Parser) -> ParseResult<StaffNode>
+// fn eat_repeat_block(parser: &mut Parser) -> CompileResult<StaffNode>
 // {
 //     let (start_literal, start_token) = parser.take()
-//         .ok_or(SyntaxError::Generic("Expected token at start of repeat block".to_string()))?;
+//         .ok_or(CompileError::GenericSyntax("Expected token at start of repeat block".to_string()))?;
 //     if let Token::StartRepeat() = start_token
 //     {
 //         // great!
 //     }
 //     else
 //     {
-//         return Err(SyntaxError::Unexpected(
+//         return Err(CompileError::Unexpected(
 //             "Expected a repeat block initiator".to_string(), start_token, start_literal));
 //     }
 //     let nodes = eat_repeat_block_interior(parser)?;
 //     let (end_literal, end_token) = parser.take()
-//         .ok_or(SyntaxError::Generic("Unterminated repeat block".to_string()))?;
+//         .ok_or(CompileError::GenericSyntax("Unterminated repeat block".to_string()))?;
 //     if let Token::EndRepeat(count) = end_token
 //     {
 //         return Ok(StaffNode::Repeat(literal));
 //     }
-//     Err(SyntaxError::Unexpected("Expected end repeat block token".to_string(),
+//     Err(CompileError::Unexpected("Expected end repeat block token".to_string(),
 //         end_token.clone(), end_literal.clone()))
 // }
 
@@ -327,7 +310,7 @@ fn atomic_token_to_preamble_node(token: Token, literal: Literal) -> Option<Pream
     }
 }
 
-fn eat_staff_atomic(parser: &mut Parser) -> ParseResult<StaffNode>
+fn eat_staff_atomic(parser: &mut Parser) -> CompileResult<StaffNode>
 {
     if let Some((literal, token)) = parser.take()
     {
@@ -337,15 +320,15 @@ fn eat_staff_atomic(parser: &mut Parser) -> ParseResult<StaffNode>
         }
         else
         {
-            return Err(SyntaxError::Unexpected(
+            return Err(CompileError::Unexpected(
                 "Expected an atomic staff token".to_string(), token, literal));
         }
     }
 
-    Err(SyntaxError::Generic("Expected an atomic token, but nothing left".to_string()))
+    Err(CompileError::GenericSyntax("Expected an atomic token, but nothing left".to_string()))
 }
 
-fn eat_preamble_atomic(parser: &mut Parser) -> ParseResult<PreambleNode>
+fn eat_preamble_atomic(parser: &mut Parser) -> CompileResult<PreambleNode>
 {
     if let Some((literal, token)) = parser.take()
     {
@@ -355,15 +338,15 @@ fn eat_preamble_atomic(parser: &mut Parser) -> ParseResult<PreambleNode>
         }
         else
         {
-            return Err(SyntaxError::Unexpected(
+            return Err(CompileError::Unexpected(
                 "Expected an atomic preamble token".to_string(), token, literal));
         }
     }
 
-    Err(SyntaxError::Generic("Expected a preamble token, but nothing left".to_string()))
+    Err(CompileError::GenericSyntax("Expected a preamble token, but nothing left".to_string()))
 }
 
-fn eat_measure_block(parser: &mut Parser) -> ParseResult<Option<MeasureNode>>
+fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
 {
     let mut staff = vec![];
     let mut skip_next_bar = true;
@@ -407,7 +390,7 @@ fn eat_measure_block(parser: &mut Parser) -> ParseResult<Option<MeasureNode>>
                 skip_next_bar = false;
                 Some(eat_staff_atomic(parser))
             },
-            _ => Some(Err(SyntaxError::Unexpected("Illegal token in measure block".to_string(),
+            _ => Some(Err(CompileError::Unexpected("Illegal token in measure block".to_string(),
                 token.clone(), literal.clone()))),
         };
 
@@ -427,13 +410,13 @@ fn eat_measure_block(parser: &mut Parser) -> ParseResult<Option<MeasureNode>>
     });
 
     let start = measure_start.ok_or(
-        SyntaxError::Generic("No start token for measure".to_string()))?;
+        CompileError::GenericSyntax("No start token for measure".to_string()))?;
     let end = measure_end.ok_or(
-        SyntaxError::Generic("No end token for measure".to_string()))?;
+        CompileError::GenericSyntax("No end token for measure".to_string()))?;
 
     if staff.is_empty()
     {
-        return Err(SyntaxError::EmptyMeasure(start, end))
+        return Err(CompileError::EmptyMeasure(start, end))
     }
 
     if contains_endline && staff.len() == 1
@@ -532,7 +515,7 @@ fn section_to_string(section: &SectionNode) -> String
 fn tree_to_string(tree: &AST) -> String
 {
     let mut segments = vec!["[top]".to_string()];
-    for section in &tree.sections
+    for section in tree
     {
         segments.push(section_to_string(section));
     }
@@ -545,20 +528,26 @@ pub fn print_tree(tree: &AST)
     println!("{}", tree_to_string(tree))
 }
 
-pub fn print_parse_error(error: &SyntaxError)
+pub fn print_error(error: &CompileError)
 {
     match error
     {
-        SyntaxError::Generic(msg) =>
+        CompileError::InvalidSyntax(literal) =>
+        {
+            println!("\n  Invalid syntax: \"{}\", line {}, col {}\n",
+                literal.literal, literal.lineno, literal.colno);
+        },
+        CompileError::Generic(msg) |
+        CompileError::GenericSyntax(msg) =>
         {
             println!("\n  Generic parse error: {}\n", msg);
         },
-        SyntaxError::Unexpected(msg, token, literal) =>
+        CompileError::Unexpected(msg, token, literal) =>
         {
             println!("\n  Unexpected token: {}\n    Problematic token -- \"{}\", line {}, col {}\n",
                 msg, literal.literal, literal.lineno, literal.colno);
         },
-        SyntaxError::PreambleOrder(section, first, cur) =>
+        CompileError::PreambleOrder(section, first, cur) =>
         {
             println!("\n  Cannot declare preamble element after staff has begun.");
             println!("    In this section --          \"{}\", line {}, col {}",
@@ -568,13 +557,22 @@ pub fn print_parse_error(error: &SyntaxError)
             println!("    Problematic element is --   \"{}\", line {}, col {}\n",
                 cur.literal, cur.lineno, cur.colno);
         },
-        SyntaxError::EmptyMeasure(start, end) =>
+        CompileError::EmptyMeasure(start, end) =>
         {
             println!("\n  Empty measure.");
             println!("    Measure starts here -- \"{}\", line {}, col {}",
                 start.literal, start.lineno, start.colno);
             println!("    Measure ends here -- \"{}\", line {}, col {}\n",
                 end.literal, end.lineno, end.colno);
+        },
+        CompileError::TimeSignatureViolation{ measure, time_signature, nominal } =>
+        {
+            println!("\n    {}\n", "Time signature violation.".underline());
+            println!("    This measure is {} beats, which violates time signature {:?}",
+                measure.count_beats(), nominal);
+            println!("    Time signature declared here -- {}", time_signature.to_string());
+            println!("    Initiating element --  {}", measure.start.to_string());
+            println!("    Terminating element -- {}\n", measure.end.to_string());
         },
     }
 }
