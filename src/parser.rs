@@ -1,7 +1,9 @@
 use crate::types::*;
-use crate::lexer::lex_multiline_string;
+use crate::lexer::{lex_markdown, lex_multiline_string};
 use indoc::indoc;
 use colored::Colorize;
+use std::fs::read_to_string;
+
 
 struct Parser
 {
@@ -37,20 +39,6 @@ pub enum PreambleNode
 #[derive(Debug, Clone)]
 pub enum StaffNode
 {
-    Repeat(Literal), // TODO making this atomic for now
-    // RepeatBlock
-    // {
-    //     start_literal: Literal,
-    //     end_literal: Literal,
-    //     count: u8,
-    //     nodes: Vec<MeasureNode>,
-    // },
-    Section
-    {
-        literal: Literal,
-        name: String,
-        nodes: Vec<StaffNode>
-    },
     AbsolutePitch
     {
         literal: Literal,
@@ -73,6 +61,8 @@ pub enum StaffNode
     },
     MeasureBar
     {
+        close: bool,
+        open: bool,
         literal: Literal,
     },
     Endline
@@ -210,28 +200,15 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
                 }
             },
             Token::Endline() |
-            Token::MeasureBar() |
+            Token::MeasureBar(_, _) |
             Token::Track(_) |
             Token::ScaleDegree(_) |
             Token::AbsolutePitch(_) |
-            Token::Note(_) |
-            Token::StartRepeat() |
-            Token::EndRepeat(_) =>
+            Token::Note(_) =>
             {
                 first_staff.get_or_insert(literal);
                 eat_measure_block(parser)
             }
-            // Token::Note(_) =>
-            // {
-            //     first_staff.get_or_insert(literal);
-            //     eat_staff_atomic(parser)
-            // },
-            // Token::StartRepeat() =>
-            // {
-            //     first_staff.get_or_insert(literal);
-            //     eat_repeat_block(parser)
-            // },
-            _ => Err(CompileError::Unexpected("Illegal token in section".to_string(), token, literal)),
         }?;
 
         if let Some(n) = node
@@ -243,30 +220,6 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
     Ok(SectionNode { literal: section_literal, name: section_name, preamble, measures })
 }
 
-// fn eat_repeat_block(parser: &mut Parser) -> CompileResult<StaffNode>
-// {
-//     let (start_literal, start_token) = parser.take()
-//         .ok_or(CompileError::GenericSyntax("Expected token at start of repeat block".to_string()))?;
-//     if let Token::StartRepeat() = start_token
-//     {
-//         // great!
-//     }
-//     else
-//     {
-//         return Err(CompileError::Unexpected(
-//             "Expected a repeat block initiator".to_string(), start_token, start_literal));
-//     }
-//     let nodes = eat_repeat_block_interior(parser)?;
-//     let (end_literal, end_token) = parser.take()
-//         .ok_or(CompileError::GenericSyntax("Unterminated repeat block".to_string()))?;
-//     if let Token::EndRepeat(count) = end_token
-//     {
-//         return Ok(StaffNode::Repeat(literal));
-//     }
-//     Err(CompileError::Unexpected("Expected end repeat block token".to_string(),
-//         end_token.clone(), end_literal.clone()))
-// }
-
 fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNode>
 {
     match token
@@ -275,18 +228,13 @@ fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNod
         Token::Track(track_id) => Some(StaffNode::Track{ literal, track_id }),
         Token::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ literal, degree }),
         Token::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ literal, pitch }),
-        Token::MeasureBar() => Some(StaffNode::MeasureBar { literal }),
+        Token::MeasureBar(close, open) => Some(StaffNode::MeasureBar { literal, close, open }),
         Token::Endline() => Some(StaffNode::Endline{ literal }),
         Token::Tempo(_) |
         Token::Dynamic(_) |
         Token::Scale(_) |
         Token::TimeSignature(_) |
-        Token::Section(_) => None,
-        Token::EndRepeat(_) |
-        Token::StartRepeat() =>
-        {
-            Some(StaffNode::Repeat(literal))
-        },
+        Token::Section(_) => None
     }
 }
 
@@ -302,11 +250,9 @@ fn atomic_token_to_preamble_node(token: Token, literal: Literal) -> Option<Pream
         Token::Track(_) |
         Token::ScaleDegree(_) |
         Token::AbsolutePitch(_) |
-        Token::MeasureBar() |
+        Token::MeasureBar(_, _) |
         Token::Section(_) |
-        Token::Note(_) |
-        Token::EndRepeat(_) |
-        Token::StartRepeat() => None,
+        Token::Note(_) => None
     }
 }
 
@@ -361,9 +307,7 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
 
         let node = match token
         {
-            Token::StartRepeat() |
-            Token::EndRepeat(_) |
-            Token::MeasureBar() =>
+            Token::MeasureBar(_, _) =>
             {
                 if skip_next_bar
                 {
@@ -380,7 +324,6 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
             {
                 break
             }
-            Token::EndRepeat(_) |
             Token::AbsolutePitch(_) |
             Token::ScaleDegree(_) |
             Token::Endline() |
@@ -438,7 +381,7 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
 
 fn staff_node_to_string(node: &StaffNode, level: u32) -> String
 {
-    let pad = (0..level*3).map(|_| " ").collect::<String>();
+    let pad = "                ";
 
     match node
     {
@@ -448,25 +391,12 @@ fn staff_node_to_string(node: &StaffNode, level: u32) -> String
         StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
         StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
         StaffNode::Endline { .. } => format!("{}[endline]", pad),
-        StaffNode::Repeat(literal) => format!("{}[repeat] {}", pad, literal.literal),
-        StaffNode::Section{literal, name, nodes} =>
-        {
-            let mut segments = vec![
-                format!("{}[section] {}", pad, literal.literal)];
-
-            for n in nodes
-            {
-                segments.push(staff_node_to_string(n, level + 1));
-            }
-
-            segments.join("\n")
-        },
     }
 }
 
 fn preamble_node_to_string(node: &PreambleNode, level: u32) -> String
 {
-    let pad = (0..level*3).map(|_| " ").collect::<String>();
+    let pad = "            ";
 
     match node
     {
@@ -483,7 +413,7 @@ impl MeasureNode
     fn to_string(&self, level: u32) -> String
     {
         let mut segments = vec![];
-        segments.push(format!("         [measure] {} .. {}", self.start.literal, self.end.literal));
+        segments.push(format!("            [measure] {} .. {}", self.start.literal, self.end.literal));
         for n in &self.staff
         {
             segments.push(staff_node_to_string(n, level + 1))
@@ -495,15 +425,15 @@ impl MeasureNode
 fn section_to_string(section: &SectionNode) -> String
 {
     let mut segments = vec![
-        format!("   [section] {}", section.literal.literal)];
+        format!("    [section] {}", section.literal.literal)];
 
-    segments.push("      [preamble]".to_string());
+    segments.push("        [preamble]".to_string());
     for n in &section.preamble
     {
         segments.push(preamble_node_to_string(n, 3));
     }
 
-    segments.push("      [staff]".to_string());
+    segments.push("        [staff]".to_string());
     for m in &section.measures
     {
         segments.push(m.to_string(3));
@@ -573,6 +503,8 @@ pub fn print_error(error: &CompileError)
             println!("    Time signature declared here -- {}", time_signature.to_string());
             println!("    Initiating element --  {}", measure.start.to_string());
             println!("    Terminating element -- {}\n", measure.end.to_string());
+
+            // show_file(&measure.start, &measure.end, filename);
         },
     }
 }
@@ -588,30 +520,76 @@ fn assert_ast_results(source: &str, ast_repr: &str)
 #[test]
 fn parsing_test()
 {
-    assert_ast_results("[: . ./2 :]",
+    assert_ast_results("|: . ./2 :|",
         indoc! {"
         [top]
-           [section] <implicit-section>
-              [preamble]
-              [staff]
-                 [repeat] x1
-                    [note] .
-                    [note] ./2
-                 [endline]
+            [section] <implicit-section>
+                [preamble]
+                [staff]
+                    [measure] |: .. :|
+                        [note] .
+                        [note] ./2
         [end]"});
 
-    assert_ast_results("---BIG--- F3 . . F2 ./3 duh:3/2",
+    assert_ast_results("===BIG=== F3 . . F2 ./3 duh:3/2",
         indoc! {"
         [top]
-           [section] ---BIG---
-              [preamble]
-              [staff]
-                 [pitch] F3
-                 [note] .
-                 [note] .
-                 [pitch] F2
-                 [note] ./3
-                 [note] duh:3/2
-                 [endline]
+            [section] ===BIG===
+                [preamble]
+                [staff]
+                    [measure] F3 .. <eol>
+                        [pitch] F3
+                        [note] .
+                        [note] .
+                        [pitch] F2
+                        [note] ./3
+                        [note] duh:3/2
         [end]"});
+
+    assert_ast_results("CMAJOR 4/4 |: -/2 -:3/2 -/2 -:3/2 .:5/2 |",
+        indoc! {"
+        [top]
+            [section] <implicit-section>
+                [preamble]
+                    [scale] CMAJOR
+                    [time] 4/4
+                [staff]
+                    [measure] |: .. |
+                        [note] -/2
+                        [note] -:3/2
+                        [note] -/2
+                        [note] -:3/2
+                        [note] .:5/2
+        [end]"});
+}
+
+fn test_parse_file(filename: &str)
+{
+    let tokens = lex_markdown(filename).unwrap();
+    let tree = parse_to_ast(&tokens);
+    assert!(tree.is_ok());
+}
+
+#[test]
+fn parse_john_madden()
+{
+    test_parse_file("examples/hbjm.md");
+}
+
+#[test]
+fn parse_mariah()
+{
+    test_parse_file("examples/mariah.md");
+}
+
+#[test]
+fn parse_batman()
+{
+    test_parse_file("examples/batman.md");
+}
+
+#[test]
+fn parse_the_sound_of_music()
+{
+    test_parse_file("examples/soundofmusic.md");
 }

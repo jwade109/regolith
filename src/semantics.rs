@@ -124,9 +124,7 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
                 {
                     state.track = track_id.clone();
                 },
-                StaffNode::Section { literal, .. } |
                 StaffNode::MeasureBar { literal, .. } |
-                StaffNode::Repeat(literal) |
                 StaffNode::Endline { literal } =>
                 {
                     return Err(CompileError::InvalidSyntax(literal.clone()));

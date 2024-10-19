@@ -138,7 +138,7 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Comp
             colno: line.len(),
             filename: filename.to_string(),
             lineno,
-            literal: "<line-terminator>".to_string(),
+            literal: "<eol>".to_string(),
             idno
         });
         idno += 1;
@@ -205,7 +205,7 @@ pub fn read_literals_from_markdown(filename: &str) -> CompileResult<Vec<Literal>
             colno: line.len() + 1,
             filename: filename.to_string(),
             lineno: lineno + 1,
-            literal: "<line-terminator>".to_string(),
+            literal: "<eol>".to_string(),
             idno
         });
         idno += 1;
@@ -292,14 +292,12 @@ fn get_nth_capture(captures: &[Option<String>], i: usize) -> Option<String>
 
 fn lex_literal(literal: &str) -> Option<Token>
 {
-    if literal == "<line-terminator>"
+    if literal == "<eol>"
     {
         return Some(Token::Endline());
     }
 
-    let measure_bar_re = regex!(r"^\|$");
-    let start_repeat_re = regex!(r"^\[:$");
-    let stop_repeat_re = regex!(r"^:\](x(\d*))?$");
+    let measure_bar_re = regex!(r"^(:?)\|(:?)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
     let track_token_re = regex!(r"^\[([^\s-]*)\]$");
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
@@ -352,24 +350,6 @@ fn lex_literal(literal: &str) -> Option<Token>
         Some(Token::Note(n))
     });
 
-    lex_rule!(&literal, start_repeat_re, |_: &[Option<String>]|
-    {
-        Some(Token::StartRepeat())
-    });
-
-    lex_rule!(&literal, stop_repeat_re, |cap: &[Option<String>]|
-    {
-        let times : u8 = if let Some(t) = get_nth_capture(cap, 2)
-        {
-            t.parse().ok()?
-        }
-        else
-        {
-            1
-        };
-        Some(Token::EndRepeat(times))
-    });
-
     lex_rule!(&literal, scale_decl_re, |cap: &[Option<String>]|
     {
         let pitch_str = get_nth_capture(cap, 1)?;
@@ -405,9 +385,11 @@ fn lex_literal(literal: &str) -> Option<Token>
         Some(Token::ScaleDegree(d))
     });
 
-    lex_rule!(&literal, measure_bar_re, |_: &[Option<String>]|
+    lex_rule!(&literal, measure_bar_re, |cap: &[Option<String>]|
     {
-        Some(Token::MeasureBar())
+        let prefix = get_nth_capture(cap, 1)?;
+        let suffix = get_nth_capture(cap, 2)?;
+        Some(Token::MeasureBar(prefix == ":", suffix == ":"))
     });
 
     lex_rule!(&literal, rest_decl_re, |cap: &[Option<String>]|
@@ -544,24 +526,28 @@ fn scale_lexing()
 {
     lex_assert!("CMAJOR", Token::Scale(Scale
     {
+        name: "CMAJOR".to_string(),
         tone_id: 13,
         steps: vec![2, 2, 1, 2, 2, 2, 1]
     }));
 
     lex_assert!("AMINOR", Token::Scale(Scale
     {
+        name: "AMINOR".to_string(),
         tone_id: 10,
         steps: vec![2, 1, 2, 2, 1, 2, 2]
     }));
 
     lex_assert!("G#PENTA", Token::Scale(Scale
     {
+        name: "G#PENTA".to_string(),
         tone_id: 21,
         steps: vec![2, 2, 3, 2, 3]
     }));
 
     lex_assert!("D3#CHROM", Token::Scale(Scale
     {
+        name: "D3#CHROM".to_string(),
         tone_id: 28,
         steps: vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     }));
@@ -576,23 +562,18 @@ fn scale_lexing()
 #[test]
 fn bar_lexing()
 {
-    lex_assert!("|", Token::MeasureBar());
-}
+    lex_assert!("|",  Token::MeasureBar(false, false));
+    lex_assert!("|:", Token::MeasureBar(false, true));
+    lex_assert!(":|", Token::MeasureBar(true, false));
+    lex_assert!(":|:", Token::MeasureBar(true, true));
+    // lex_assert!(":|x2",  Token::EndRepeat(2));
+    // lex_assert!(":|x6",  Token::EndRepeat(6));
+    // lex_assert!(":|x12", Token::EndRepeat(12));
+    // lex_assert!(":|x0",  Token::EndRepeat(0));
 
-#[test]
-fn repeat_lexing()
-{
-    lex_assert!("[:",    Token::StartRepeat());
-
-    lex_assert!(":]",    Token::EndRepeat(1));
-    lex_assert!(":]x2",  Token::EndRepeat(2));
-    lex_assert!(":]x6",  Token::EndRepeat(6));
-    lex_assert!(":]x12", Token::EndRepeat(12));
-    lex_assert!(":]x0",  Token::EndRepeat(0));
-
-    lex_nope!(":]x-1");
-    lex_nope!(":]x-5");
-    lex_nope!(":]x-15");
+    lex_nope!(":|x-1");
+    lex_nope!(":|x-5");
+    lex_nope!(":|x-15");
 }
 
 #[test]
