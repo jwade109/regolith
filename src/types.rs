@@ -109,6 +109,8 @@ pub struct Measure
 {
     pub start: Literal,
     pub end: Literal,
+    pub close: bool,
+    pub open: bool,
     pub track: String,
     pub notes: Vec<NoteDecl>
 }

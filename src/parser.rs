@@ -2,7 +2,6 @@ use crate::types::*;
 use crate::lexer::{lex_markdown, lex_multiline_string};
 use indoc::indoc;
 use colored::Colorize;
-use std::fs::read_to_string;
 
 
 struct Parser
@@ -83,8 +82,8 @@ pub struct SectionNode
 #[derive(Debug, Clone)]
 pub struct MeasureNode
 {
-    pub start: Literal,
-    pub end: Literal,
+    pub start: (Literal, Token),
+    pub end: (Literal, Token),
     pub staff: Vec<StaffNode>
 }
 
@@ -120,7 +119,7 @@ pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> CompileResult<AST>
 
     let mut sections = vec![];
 
-    while let Some((literal, token)) = parser.peek()
+    while let Some((_, _)) = parser.peek()
     {
         let section = eat_section(&mut parser)?;
         sections.push(section);
@@ -149,7 +148,7 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
     let mut measures: Vec<MeasureNode> = vec![];
 
     // parse the preamble
-    while let Some((literal, token)) = parser.peek_copy()
+    while let Some((_, token)) = parser.peek_copy()
     {
         let node = match token
         {
@@ -160,11 +159,13 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
             Token::Endline() =>
             {
                 eat_preamble_atomic(parser)
-            }
-            _ =>
-            {
-                break;
-            }
+            },
+            Token::Track(_) |
+            Token::MeasureBar(_, _) |
+            Token::AbsolutePitch(_) |
+            Token::ScaleDegree(_) |
+            Token::Note(_) |
+            Token::Section(_) => break,
         }?;
 
         preamble.push(node);
@@ -297,13 +298,13 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
     let mut staff = vec![];
     let mut skip_next_bar = true;
 
-    let mut measure_start: Option<Literal> = None;
-    let mut measure_end: Option<Literal> = None;
+    let mut measure_start: Option<(Literal, Token)> = None;
+    let mut measure_end: Option<(Literal, Token)> = None;
 
     while let Some((literal, token)) = parser.peek()
     {
-        measure_start.get_or_insert(literal.clone());
-        measure_end = Some(literal.clone());
+        measure_start.get_or_insert((literal.clone(), token.clone()));
+        measure_end = Some((literal.clone(), token.clone()));
 
         let node = match token
         {
@@ -333,7 +334,11 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
                 skip_next_bar = false;
                 Some(eat_staff_atomic(parser))
             },
-            _ => Some(Err(CompileError::Unexpected("Illegal token in measure block".to_string(),
+            Token::Dynamic(_) |
+            Token::Tempo(_) |
+            Token::TimeSignature(_) |
+            Token::Scale(_) => Some(Err(CompileError::Unexpected(
+                "Illegal token in measure block".to_string(),
                 token.clone(), literal.clone()))),
         };
 
@@ -359,7 +364,7 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
 
     if staff.is_empty()
     {
-        return Err(CompileError::EmptyMeasure(start, end))
+        return Err(CompileError::EmptyMeasure(start.0, end.0))
     }
 
     if contains_endline && staff.len() == 1
@@ -413,7 +418,7 @@ impl MeasureNode
     fn to_string(&self, level: u32) -> String
     {
         let mut segments = vec![];
-        segments.push(format!("            [measure] {} .. {}", self.start.literal, self.end.literal));
+        segments.push(format!("            [measure] {} .. {}", self.start.0.literal, self.end.0.literal));
         for n in &self.staff
         {
             segments.push(staff_node_to_string(n, level + 1))

@@ -72,11 +72,11 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
     {
         match node
         {
-            PreambleNode::DynamicLevel { literal, level } =>
+            PreambleNode::DynamicLevel { literal: _, level } =>
             {
                 state.dynamic = level.clone();
             },
-            PreambleNode::Scale { literal, scale } =>
+            PreambleNode::Scale { literal: _, scale } =>
             {
                 state.scale = scale.clone();
             },
@@ -84,7 +84,7 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
             {
                 state.time_signature = Some((literal.clone(), ratio.clone()));
             },
-            PreambleNode::Tempo { literal, tempo } =>
+            PreambleNode::Tempo { literal: _, tempo } =>
             {
                 state.tempo = tempo.clone();
             }
@@ -112,15 +112,15 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
                     };
                     notes.push(n);
                 },
-                StaffNode::AbsolutePitch { literal, pitch } =>
+                StaffNode::AbsolutePitch { literal: _, pitch } =>
                 {
                     state.tone_id = *pitch;
                 },
-                StaffNode::ScaleDegree { literal, degree } =>
+                StaffNode::ScaleDegree { .. } =>
                 {
                     // TODO
                 },
-                StaffNode::Track { literal, track_id } =>
+                StaffNode::Track { literal: _, track_id } =>
                 {
                     state.track = track_id.clone();
                 },
@@ -134,8 +134,10 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
 
         measures.push(Measure
         {
-            start: meas.start.clone(),
-            end: meas.end.clone(),
+            start: meas.start.0.clone(),
+            end: meas.end.0.clone(),
+            close: false,
+            open: false,
             track: state.track.clone(),
             notes
         });

@@ -3,7 +3,7 @@
 use argparse::{ArgumentParser, Store};
 use lexer::lex_multiline_string;
 use semantics::do_semantics;
-use types::{CompileResult, CompileError, Literal, Token};
+use types::{CompileResult, Literal, Token};
 use crate::lexer::lex_markdown;
 use crate::parser::{parse_to_ast, print_tree, print_error};
 // use crate::compiler::compile;
@@ -46,7 +46,6 @@ fn compile_string(source: &str) -> CompileResult<()>
 fn main() -> Result<(), ()>
 {
     let mut inpath = String::new();
-    let mut outpath = String::new();
     let mut source = String::new();
 
     {

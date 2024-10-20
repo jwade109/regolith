@@ -1,3 +1,5 @@
+#[allow(warnings)]
+
 use anyhow::Result;
 use std::fs::File;
 use std::path::Path;
