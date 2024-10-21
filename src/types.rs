@@ -1,4 +1,5 @@
 use fraction::Fraction;
+use reqwest::Error as ReqError;
 
 #[derive(Debug)]
 pub enum CompileError
@@ -15,6 +16,24 @@ pub enum CompileError
         time_signature: Literal,
         nominal: TimeSignature,
     },
+    FileError(std::io::Error),
+    NetworkError(reqwest::Error),
+}
+
+impl From<std::io::Error> for CompileError
+{
+    fn from(error: std::io::Error) -> Self
+    {
+        CompileError::FileError(error)
+    }
+}
+
+impl From<reqwest::Error> for CompileError
+{
+    fn from(error: reqwest::Error) -> Self
+    {
+        CompileError::NetworkError(error)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

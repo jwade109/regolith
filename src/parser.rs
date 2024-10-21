@@ -3,12 +3,6 @@ use crate::lexer::{lex_markdown, lex_multiline_string};
 use indoc::indoc;
 use colored::Colorize;
 
-
-struct Parser
-{
-    tokens: Vec<(Literal, Token)>
-}
-
 #[derive(Debug, Clone)]
 pub enum PreambleNode
 {
@@ -88,6 +82,11 @@ pub struct MeasureNode
 }
 
 pub type AST = Vec<SectionNode>;
+
+struct Parser
+{
+    tokens: Vec<(Literal, Token)>
+}
 
 impl Parser
 {
@@ -511,6 +510,16 @@ pub fn print_error(error: &CompileError)
 
             // show_file(&measure.start, &measure.end, filename);
         },
+        CompileError::NetworkError(e) =>
+        {
+            println!("\n    {}\n", "Network error.".underline());
+            println!("    {:?}\n", e);
+        },
+        CompileError::FileError(e) =>
+        {
+            println!("\n    {}\n", "File IO error.".underline());
+            println!("    {:?}\n", e);
+        }
     }
 }
 

@@ -1,10 +1,9 @@
 #[allow(warnings)]
 
-use anyhow::Result;
+use crate::types::{CompileError, CompileResult};
 use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
-use anyhow::bail;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MoonbaseNote
@@ -15,28 +14,28 @@ pub struct MoonbaseNote
     pub tone_id: u8
 }
 
-fn hashed_fn(arg: &str, ext: &str) -> Result<String>
+fn hashed_fn(arg: &str, ext: &str) -> String
 {
     let digest = md5::compute(arg);
-    Ok(format!("/tmp/{:x}.{}", digest, ext))
+    format!("/tmp/{:x}.{}", digest, ext)
 }
 
 #[test]
 fn filename_hashing()
 {
     assert_eq!(
-        hashed_fn("ewjwef", "wav").ok(),
-        Some("/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string())
+        hashed_fn("ewjwef", "wav"),
+        "/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string()
     );
 
     assert_eq!(
-        hashed_fn("", "jpg").ok(),
-        Some("/tmp/d41d8cd98f00b204e9800998ecf8427e.jpg".to_string())
+        hashed_fn("", "jpg"),
+        "/tmp/d41d8cd98f00b204e9800998ecf8427e.jpg".to_string()
     );
 
     assert_eq!(
-        hashed_fn("[duw<40,19>]", "mp3").ok(),
-        Some("/tmp/a85cb3b84d6813ab169ddca8a03be747.mp3".to_string())
+        hashed_fn("[duw<40,19>]", "mp3"),
+        "/tmp/a85cb3b84d6813ab169ddca8a03be747.mp3".to_string()
     );
 }
 
@@ -114,12 +113,12 @@ fn moonbase_strings()
     }));
 }
 
-pub fn generate_moonbase(moonbase: &str) -> Result<String>
+pub fn generate_moonbase(moonbase: &str) -> CompileResult<String>
 {
     let num_attempts = 10;
     let backoff_dur = Duration::new(2, 0);
 
-    let outpath = hashed_fn(moonbase, "wav")?;
+    let outpath = hashed_fn(moonbase, "wav");
     let path = Path::new(&outpath);
     if path.exists()
     {
@@ -139,11 +138,12 @@ pub fn generate_moonbase(moonbase: &str) -> Result<String>
         resp.error_for_status_ref()?;
         use std::io::Write;
         let mut file = File::create(path)?;
-        file.write_all(&resp.bytes()?)?;
+        let bytes = resp.bytes()?;
+        file.write_all(&bytes)?;
         return Ok(outpath);
     }
 
-    bail!("API call failed")
+    Err(CompileError::Generic("badliness".to_string()))
 }
 
 #[test]
@@ -157,5 +157,15 @@ fn moonbase_gen()
     assert_eq!(
         generate_moonbase("wefwefw").ok(),
         Some("/tmp/37e838885e9fd07692e5da83e515878e.wav".to_string())
+    );
+
+    assert_eq!(
+        generate_moonbase("command error in phoneme").ok(),
+        Some("/tmp/b1ec37d0fe49d4b46bb7f1ad801ae335.wav".to_string())
+    );
+
+    assert_eq!(
+        generate_moonbase("[duw<500,19>] [duw<500,19>] command error in phoneme").ok(),
+        Some("/tmp/834abde08a1c2303efd64755f2ad84fb.wav".to_string())
     );
 }
