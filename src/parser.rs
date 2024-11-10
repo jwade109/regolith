@@ -36,7 +36,7 @@ pub enum StaffNode
     AbsolutePitch
     {
         literal: Literal,
-        pitch: u8,
+        pitch: ToneId,
     },
     Note
     {
@@ -521,10 +521,6 @@ pub fn print_error(error: &CompileError)
         {
             println!("\n    {}\n", "File IO error.".bold());
             println!("    {:?}\n", e);
-        }
-        CompileError::TooManyAPIAttempts =>
-        {
-            println!("\n    {}\n\n", "Too many API attempts.".bold());
         }
         CompileError::TrackTooLarge =>
         {

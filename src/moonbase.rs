@@ -1,18 +1,18 @@
 #[allow(warnings)]
 
-use crate::types::{CompileError, CompileResult};
+use crate::types::{CompileError, CompileResult, ToneId};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::io::Write;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct MoonbaseNote
 {
     pub prefix: String,
     pub suffix: String,
     pub dur_ms: i32,
-    pub tone_id: u8
+    pub tone_id: ToneId
 }
 
 fn hashed_fn(arg: &str, ext: &str) -> PathBuf
@@ -83,7 +83,8 @@ pub fn to_moonbase_str(mbn: &MoonbaseNote) -> String
         prefix = "ih-t";
     }
 
-    format!("[{}<{},{}>{}]", prefix, ms, mbn.tone_id, mbn.suffix)
+    let ToneId(t) = mbn.tone_id;
+    format!("[{}<{},{}>{}]", prefix, ms, t, mbn.suffix)
 }
 
 #[test]

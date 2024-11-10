@@ -61,10 +61,10 @@ static PITCH_MAP : [(&str, u8); 49] =
     ("C4" , 37)
 ];
 
-pub fn pitch_string_to_id(pitch: &str) -> Option<u8>
+pub fn pitch_string_to_id(pitch: &str) -> Option<ToneId>
 {
     let (_, i) = PITCH_MAP.iter().find(|(s, _)| *s == pitch)?;
-    Some(*i)
+    Some(ToneId(*i))
 }
 
 #[test]
@@ -328,7 +328,7 @@ fn lex_literal(literal: &str) -> Option<Token>
     lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
     {
         let s : String = get_nth_capture(cap, 0)?;
-        let id : u8 = pitch_string_to_id(&s)?;
+        let id = pitch_string_to_id(&s)?;
         Some(Token::AbsolutePitch(id))
     });
 
@@ -532,28 +532,28 @@ fn scale_lexing()
     lex_assert!("CMAJOR", Token::Scale(Scale
     {
         name: "CMAJOR".to_string(),
-        tone_id: 13,
+        tone_id: ToneId(13),
         steps: vec![2, 2, 1, 2, 2, 2, 1]
     }));
 
     lex_assert!("AMINOR", Token::Scale(Scale
     {
         name: "AMINOR".to_string(),
-        tone_id: 10,
+        tone_id: ToneId(10),
         steps: vec![2, 1, 2, 2, 1, 2, 2]
     }));
 
     lex_assert!("G#PENTA", Token::Scale(Scale
     {
         name: "G#PENTA".to_string(),
-        tone_id: 21,
+        tone_id: ToneId(21),
         steps: vec![2, 2, 3, 2, 3]
     }));
 
     lex_assert!("D3#CHROM", Token::Scale(Scale
     {
         name: "D3#CHROM".to_string(),
-        tone_id: 28,
+        tone_id: ToneId(28),
         steps: vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     }));
 

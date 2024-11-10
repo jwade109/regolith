@@ -46,7 +46,7 @@ struct CompositionState
     dynamic: DynamicLevel,
     scale: Scale,
     time_signature: Option<(Literal, TimeSignature)>,
-    tone_id: u8,
+    tone_id: ToneId,
     track: String
 }
 
@@ -60,7 +60,7 @@ impl CompositionState
             dynamic: DynamicLevel::Mezzoforte,
             scale: Scale::cmajor(),
             time_signature: None,
-            tone_id: 13, // TODO
+            tone_id: ToneId(13), // TODO
             track: String::new()
         }
     }
@@ -116,9 +116,9 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
                 {
                     state.tone_id = *pitch;
                 },
-                StaffNode::ScaleDegree { .. } =>
+                StaffNode::ScaleDegree { literal: _, degree } =>
                 {
-                    // TODO
+                    state.tone_id = sample_scale(&state.scale, *degree as usize);
                 },
                 StaffNode::Track { literal: _, track_id } =>
                 {

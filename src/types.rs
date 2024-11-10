@@ -18,7 +18,6 @@ pub enum CompileError
     },
     FileError(std::io::Error),
     NetworkError(reqwest::Error),
-    TooManyAPIAttempts,
     TrackTooLarge,
 }
 
@@ -50,7 +49,7 @@ impl From<reqwest::Error> for CompileError
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub struct Literal
 {
     pub literal: String,
@@ -69,7 +68,7 @@ impl Literal
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub struct RegoNote
 {
     pub prefix: String,
@@ -77,7 +76,7 @@ pub struct RegoNote
     pub beats: Fraction
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum DynamicLevel
 {
     Pianissimo,
@@ -88,11 +87,14 @@ pub enum DynamicLevel
     Fortissimo
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Copy, Clone)]
+pub struct ToneId(pub u8);
+
+#[derive(Debug, Clone)]
 pub struct Scale
 {
     pub name: String,
-    pub tone_id: u8,
+    pub tone_id: ToneId,
     pub steps: Vec<u8>
 }
 
@@ -103,20 +105,27 @@ impl Scale
         Scale
         {
             name: "cmajor".to_string(),
-            tone_id: 13,
+            tone_id: ToneId(13),
             steps: vec![2, 2, 1, 2, 2, 2, 1]
         }
     }
 }
 
+pub fn sample_scale(scale: &Scale, degree: usize) -> ToneId
+{
+    // TODO this might panic if degree is too big or negative!
+    let ToneId(root) = scale.tone_id;
+    ToneId(scale.steps[0..degree].iter().sum::<u8>())
+}
+
 pub type TimeSignature = (u8, u8);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Token
 {
     Track(String),
     Tempo(u16),
-    AbsolutePitch(u8),
+    AbsolutePitch(ToneId),
     Note(RegoNote),
     Scale(Scale),
     ScaleDegree(i32),
@@ -134,7 +143,7 @@ pub struct NoteDecl
 {
     pub note: RegoNote,
     pub note_literal: Literal,
-    pub tone_id: u8
+    pub tone_id: ToneId
 }
 
 #[derive(Debug, Clone)]
