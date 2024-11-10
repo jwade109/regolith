@@ -2,6 +2,7 @@ use std::fs::read_to_string;
 use fraction::Fraction;
 use regex_macro::regex;
 use crate::types::*;
+use std::path::Path;
 
 use crate::moonbase::MoonbaseNote;
 
@@ -147,13 +148,14 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Comp
     Ok(result)
 }
 
-fn read_literals_from_file(filename: &str) -> CompileResult<Vec<Literal>>
+fn read_literals_from_file(filename: &Path) -> CompileResult<Vec<Literal>>
 {
     read_literals_from_multiline_string(&read_to_string(filename)
-        .or(Err(CompileError::Generic("Failed to open file".to_string())))?, filename)
+        .or(Err(CompileError::Generic("Failed to open file".to_string())))?,
+        filename.to_str().ok_or(CompileError::Generic("Bad path".to_string()))?)
 }
 
-pub fn read_literals_from_markdown(filename: &str) -> CompileResult<Vec<Literal>>
+pub fn read_literals_from_markdown(filename: &Path) -> CompileResult<Vec<Literal>>
 {
     let mut result = Vec::new();
     let mut idno = 0;
@@ -161,6 +163,9 @@ pub fn read_literals_from_markdown(filename: &str) -> CompileResult<Vec<Literal>
     let reg = regex!(r"[^\s]+");
 
     let mut codeblock = false;
+
+    let name = filename.to_str().ok_or(
+        CompileError::Generic("Bad filename".to_string()))?.to_string();
 
     for (lineno, line) in read_to_string(filename)
         .or(Err(CompileError::Generic("Failed to open file".to_string())))?.lines().enumerate()
@@ -191,7 +196,7 @@ pub fn read_literals_from_markdown(filename: &str) -> CompileResult<Vec<Literal>
             let l = Literal
             {
                 colno: m.start() + 1,
-                filename: filename.to_string(),
+                filename: name.clone(),
                 lineno: lineno + 1,
                 literal: m.as_str().to_string(),
                 idno
@@ -203,7 +208,7 @@ pub fn read_literals_from_markdown(filename: &str) -> CompileResult<Vec<Literal>
         result.push(Literal
         {
             colno: line.len() + 1,
-            filename: filename.to_string(),
+            filename: name.clone(),
             lineno: lineno + 1,
             literal: "<eol>".to_string(),
             idno
@@ -449,12 +454,12 @@ pub fn lex_multiline_string(source: &str) -> CompileResult<Vec<(Literal, Token)>
     lex_literals(&read_literals_from_multiline_string(source, "")?)
 }
 
-pub fn lex_file(inpath: &str) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_file(inpath: &Path) -> CompileResult<Vec<(Literal, Token)>>
 {
     lex_literals(&read_literals_from_file(inpath)?)
 }
 
-pub fn lex_markdown(inpath: &str) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_markdown(inpath: &Path) -> CompileResult<Vec<(Literal, Token)>>
 {
     lex_literals(&read_literals_from_markdown(inpath)?)
 }

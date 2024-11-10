@@ -2,8 +2,9 @@
 
 use crate::types::{CompileError, CompileResult};
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
+use std::io::Write;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct MoonbaseNote
@@ -14,10 +15,10 @@ pub struct MoonbaseNote
     pub tone_id: u8
 }
 
-fn hashed_fn(arg: &str, ext: &str) -> String
+fn hashed_fn(arg: &str, ext: &str) -> PathBuf
 {
     let digest = md5::compute(arg);
-    format!("/tmp/{:x}.{}", digest, ext)
+    PathBuf::from(&format!("/tmp/regolith/{:x}.{}", digest, ext))
 }
 
 #[test]
@@ -25,17 +26,17 @@ fn filename_hashing()
 {
     assert_eq!(
         hashed_fn("ewjwef", "wav"),
-        "/tmp/fc0d3155c1b5099b40038d39cc71963e.wav".to_string()
+        Path::new("/tmp/regolith/fc0d3155c1b5099b40038d39cc71963e.wav")
     );
 
     assert_eq!(
         hashed_fn("", "jpg"),
-        "/tmp/d41d8cd98f00b204e9800998ecf8427e.jpg".to_string()
+        Path::new("/tmp/regolith/d41d8cd98f00b204e9800998ecf8427e.jpg")
     );
 
     assert_eq!(
         hashed_fn("[duw<40,19>]", "mp3"),
-        "/tmp/a85cb3b84d6813ab169ddca8a03be747.mp3".to_string()
+        Path::new("/tmp/regolith/a85cb3b84d6813ab169ddca8a03be747.mp3")
     );
 }
 
@@ -113,59 +114,61 @@ fn moonbase_strings()
     }));
 }
 
-pub fn generate_moonbase(moonbase: &str) -> CompileResult<String>
+pub fn create_dir(p: &Path) -> Result<(), std::io::Error>
 {
-    let num_attempts = 10;
-    let backoff_dur = Duration::new(2, 0);
+    if !p.exists()
+    {
+        std::fs::create_dir(p)
+    }
+    else
+    {
+        Ok(())
+    }
+}
+
+pub fn generate_moonbase(moonbase: &str) -> CompileResult<PathBuf>
+{
+    // TODO
+    // let num_attempts = 10;
+    // let backoff_dur = Duration::new(2, 0);
 
     let outpath = hashed_fn(moonbase, "wav");
-    let path = Path::new(&outpath);
-    if path.exists()
+    if outpath.exists()
     {
         return Ok(outpath);
     }
 
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
 
-    for _ in 0..num_attempts
-    {
-        let resp = reqwest::blocking::get(&url)?;
-        if resp.status() != reqwest::StatusCode::OK
-        {
-            std::thread::sleep(backoff_dur);
-            continue;
-        }
-        resp.error_for_status_ref()?;
-        use std::io::Write;
-        let mut file = File::create(path)?;
-        let bytes = resp.bytes()?;
-        file.write_all(&bytes)?;
-        return Ok(outpath);
-    }
-
-    Err(CompileError::Generic("badliness".to_string()))
+    let resp = reqwest::blocking::get(&url)?;
+    resp.error_for_status_ref()?;
+    create_dir(Path::new("/tmp/regolith"))?;
+    let mut file = File::create(&outpath)?;
+    let bytes = resp.bytes()?;
+    file.write_all(&bytes)?;
+    return Ok(outpath);
 }
 
 #[test]
 fn moonbase_gen()
 {
     assert_eq!(
-        generate_moonbase("[duw<500,19>] [duw<500,19>]").ok(),
-        Some("/tmp/0f4ed7068d8362b1c2dafa2baea51b5d.wav".to_string())
+        generate_moonbase("[duw<500,19>] [duw<500,19>]").unwrap(),
+        Path::new("/tmp/regolith/0f4ed7068d8362b1c2dafa2baea51b5d.wav")
     );
 
     assert_eq!(
-        generate_moonbase("wefwefw").ok(),
-        Some("/tmp/37e838885e9fd07692e5da83e515878e.wav".to_string())
+        generate_moonbase("wefwefw").unwrap(),
+        Path::new("/tmp/regolith/37e838885e9fd07692e5da83e515878e.wav")
     );
 
     assert_eq!(
-        generate_moonbase("command error in phoneme").ok(),
-        Some("/tmp/b1ec37d0fe49d4b46bb7f1ad801ae335.wav".to_string())
+        generate_moonbase("command error in phoneme").unwrap(),
+        Path::new("/tmp/regolith/b1ec37d0fe49d4b46bb7f1ad801ae335.wav")
     );
 
     assert_eq!(
-        generate_moonbase("[duw<500,19>] [duw<500,19>] command error in phoneme").ok(),
-        Some("/tmp/834abde08a1c2303efd64755f2ad84fb.wav".to_string())
+        generate_moonbase("[duw<500,19>] [duw<500,19>] command error in phoneme").unwrap(),
+        Path::new("/tmp/regolith/834abde08a1c2303efd64755f2ad84fb.wav")
     );
 }

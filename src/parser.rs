@@ -2,6 +2,7 @@ use crate::types::*;
 use crate::lexer::{lex_markdown, lex_multiline_string};
 use indoc::indoc;
 use colored::Colorize;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub enum PreambleNode
@@ -468,7 +469,8 @@ pub fn print_error(error: &CompileError)
     {
         CompileError::InvalidSyntax(literal) =>
         {
-            println!("\n  Invalid syntax: \"{}\", line {}, col {}\n",
+            println!("\n    {}\n\n    \"{}\", line {}, col {}\n",
+                "Invalid syntax.".bold(),
                 literal.literal, literal.lineno, literal.colno);
         },
         CompileError::Generic(msg) |
@@ -501,7 +503,7 @@ pub fn print_error(error: &CompileError)
         },
         CompileError::TimeSignatureViolation{ measure, time_signature, nominal } =>
         {
-            println!("\n    {}\n", "Time signature violation.".underline());
+            println!("\n    {}\n", "Time signature violation.".bold());
             println!("    This measure is {} beats, which violates time signature {:?}",
                 measure.count_beats(), nominal);
             println!("    Time signature declared here -- {}", time_signature.to_string());
@@ -512,13 +514,21 @@ pub fn print_error(error: &CompileError)
         },
         CompileError::NetworkError(e) =>
         {
-            println!("\n    {}\n", "Network error.".underline());
+            println!("\n    {}\n", "Network error.".bold());
             println!("    {:?}\n", e);
         },
         CompileError::FileError(e) =>
         {
-            println!("\n    {}\n", "File IO error.".underline());
+            println!("\n    {}\n", "File IO error.".bold());
             println!("    {:?}\n", e);
+        }
+        CompileError::TooManyAPIAttempts =>
+        {
+            println!("\n    {}\n\n", "Too many API attempts.".bold());
+        }
+        CompileError::TrackTooLarge =>
+        {
+            println!("\n    {}\n\n", "Track too large; API call failed.".bold());
         }
     }
 }
@@ -579,7 +589,8 @@ fn parsing_test()
 
 fn test_parse_file(filename: &str)
 {
-    let tokens = lex_markdown(filename).unwrap();
+    let path = Path::new(filename);
+    let tokens = lex_markdown(path).unwrap();
     let tree = parse_to_ast(&tokens);
     assert!(tree.is_ok());
 }

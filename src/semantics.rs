@@ -5,13 +5,13 @@ use fraction::Fraction;
 #[derive(Debug)]
 pub struct Section
 {
-    id: u32,
-    name: String,
-    tempo: u16,
-    dynamic: DynamicLevel,
-    scale: Scale,
-    time_signature: Option<(Literal, TimeSignature)>,
-    measures: Vec<Measure>
+    pub id: u32,
+    pub name: String,
+    pub tempo: u16,
+    pub dynamic: DynamicLevel,
+    pub scale: Scale,
+    pub time_signature: Option<(Literal, TimeSignature)>,
+    pub measures: Vec<Measure>
 }
 
 impl Section
@@ -66,7 +66,7 @@ impl CompositionState
     }
 }
 
-fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileResult<Section>
+fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) -> CompileResult<Section>
 {
     for node in &section.preamble
     {
@@ -168,7 +168,7 @@ fn make_section(section: &SectionNode, state: &mut CompositionState) -> CompileR
 
     return Ok(Section
     {
-        id: 0,
+        id,
         name: section.name.clone(),
         tempo: state.tempo.clone(),
         dynamic: state.dynamic.clone(),
@@ -183,9 +183,9 @@ pub fn do_semantics(tree: &AST) -> CompileResult<Composition>
     let mut state = CompositionState::defaults();
 
     let mut sections = vec![];
-    for node in tree
+    for (id, node) in tree.iter().enumerate()
     {
-        let s = make_section(node, &mut state)?;
+        let s = make_section(id as u32, node, &mut state)?;
         sections.push(s);
     }
 

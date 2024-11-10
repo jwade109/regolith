@@ -1,5 +1,5 @@
 use fraction::Fraction;
-use reqwest::Error as ReqError;
+use reqwest::{Error as ReqError, StatusCode};
 
 #[derive(Debug)]
 pub enum CompileError
@@ -18,6 +18,8 @@ pub enum CompileError
     },
     FileError(std::io::Error),
     NetworkError(reqwest::Error),
+    TooManyAPIAttempts,
+    TrackTooLarge,
 }
 
 impl From<std::io::Error> for CompileError
@@ -32,7 +34,19 @@ impl From<reqwest::Error> for CompileError
 {
     fn from(error: reqwest::Error) -> Self
     {
-        CompileError::NetworkError(error)
+        if let Some(status) = error.status()
+        {
+            match status
+            {
+                StatusCode::PAYLOAD_TOO_LARGE => CompileError::TrackTooLarge,
+                _ => CompileError::NetworkError(error)
+            }
+        }
+        else
+        {
+            CompileError::NetworkError(error)
+        }
+
     }
 }
 

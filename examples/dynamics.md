@@ -2,7 +2,7 @@
 # track 1
 
 ```regolith
-120BPM CMAJOR
+120BPM CMAJOR 6/4
 
 PIANISSIMO
 [1]
