@@ -132,12 +132,29 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
             }
         }
 
+        let open = if let Token::MeasureBar(_, open) = meas.start.1
+        {
+            open
+        }
+        else
+        {
+            false
+        };
+        let close = if let Token::MeasureBar(close, _) = meas.end.1
+        {
+            close
+        }
+        else
+        {
+            false
+        };
+
         measures.push(Measure
         {
             start: meas.start.0.clone(),
             end: meas.end.0.clone(),
-            close: false,
-            open: false,
+            close,
+            open,
             track: state.track.clone(),
             notes
         });

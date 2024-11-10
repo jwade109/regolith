@@ -31,7 +31,10 @@ fn print_composition(comp: &Composition)
     {
         for measure in &section.measures
         {
-            // TODO
+            dbg!(&measure.start.literal);
+            dbg!(&measure.end.literal);
+            dbg!(&measure.open);
+            dbg!(&measure.close);
         }
     }
 }
@@ -68,6 +71,9 @@ fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
 
     create_dir(&build_dir)?;
 
+    let cache_dir = build_root.join("cache");
+    create_dir(&cache_dir)?;
+
     let tokens = match input
     {
         CompileInput::StringLiteral(s) =>
@@ -83,7 +89,7 @@ fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
     let tree = parse_to_ast(&tokens)?;
     let comp = do_semantics(&tree)?;
     print_composition(&comp);
-    generate_mb_code(&comp, &build_dir)?;
+    generate_mb_code(&comp, &cache_dir, &build_dir)?;
     Ok(())
 }
 

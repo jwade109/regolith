@@ -114,8 +114,9 @@ impl Scale
 pub fn sample_scale(scale: &Scale, degree: usize) -> ToneId
 {
     // TODO this might panic if degree is too big or negative!
+    let d: usize = degree % scale.steps.len();
     let ToneId(root) = scale.tone_id;
-    ToneId(scale.steps[0..degree].iter().sum::<u8>())
+    ToneId(scale.steps[0..d].iter().sum::<u8>())
 }
 
 pub type TimeSignature = (u8, u8);

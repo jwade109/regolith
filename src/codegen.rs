@@ -23,7 +23,7 @@ fn to_moonbase_note(bpm: u16, n: &NoteDecl) -> MoonbaseNote
     }
 }
 
-pub fn generate_mb_code(comp: &Composition, build_dir: &Path) -> CompileResult<()>
+pub fn generate_mb_code(comp: &Composition, cache_dir: &Path, build_dir: &Path) -> CompileResult<()>
 {
     for section in &comp.sections
     {
@@ -39,11 +39,11 @@ pub fn generate_mb_code(comp: &Composition, build_dir: &Path) -> CompileResult<(
             })
             .map(|m| {
                 m.notes.iter().map(|n| {
-                    to_moonbase_str(&to_moonbase_note(160, n))
+                    to_moonbase_str(&to_moonbase_note(section.tempo, n))
                 }).collect::<String>()
             }).collect();
 
-            let res = generate_moonbase(&sec)?;
+            let res = generate_moonbase(&sec, cache_dir)?;
             let dst: std::path::PathBuf = build_dir.join(format!(
                 "section-{}-track-{}.wav", section.id, tid
             ));
