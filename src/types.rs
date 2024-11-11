@@ -19,6 +19,9 @@ pub enum CompileError
     FileError(std::io::Error),
     NetworkError(reqwest::Error),
     TrackTooLarge,
+    TooManyRequests,
+    DifferingMeasureCounts(u32, usize, u32, usize),
+    EmptyTrack(u32),
 }
 
 impl From<std::io::Error> for CompileError
@@ -26,26 +29,6 @@ impl From<std::io::Error> for CompileError
     fn from(error: std::io::Error) -> Self
     {
         CompileError::FileError(error)
-    }
-}
-
-impl From<reqwest::Error> for CompileError
-{
-    fn from(error: reqwest::Error) -> Self
-    {
-        if let Some(status) = error.status()
-        {
-            match status
-            {
-                StatusCode::PAYLOAD_TOO_LARGE => CompileError::TrackTooLarge,
-                _ => CompileError::NetworkError(error)
-            }
-        }
-        else
-        {
-            CompileError::NetworkError(error)
-        }
-
     }
 }
 
@@ -68,7 +51,7 @@ impl Literal
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegoNote
 {
     pub prefix: String,
@@ -76,7 +59,7 @@ pub struct RegoNote
     pub beats: Fraction
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DynamicLevel
 {
     Pianissimo,
@@ -87,10 +70,10 @@ pub enum DynamicLevel
     Fortissimo
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ToneId(pub u8);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scale
 {
     pub name: String,
@@ -116,15 +99,15 @@ pub fn sample_scale(scale: &Scale, degree: usize) -> ToneId
     // TODO this might panic if degree is too big or negative!
     let d: usize = degree % scale.steps.len();
     let ToneId(root) = scale.tone_id;
-    ToneId(scale.steps[0..d].iter().sum::<u8>())
+    ToneId(root + scale.steps[0..d].iter().sum::<u8>())
 }
 
 pub type TimeSignature = (u8, u8);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token
 {
-    Track(String),
+    Track(u32),
     Tempo(u16),
     AbsolutePitch(ToneId),
     Note(RegoNote),
@@ -154,7 +137,7 @@ pub struct Measure
     pub end: Literal,
     pub close: bool,
     pub open: bool,
-    pub track: String,
+    pub track: u32,
     pub notes: Vec<NoteDecl>
 }
 

@@ -17,7 +17,7 @@ Ti, a drink with jam and bread
 That will bring us back to Do
 
 ```regolith
-130BPM
+200BPM
 [1]
 C dow -/2 D uh/2 E diy-r -/2 C uh/2 E fiy-m C ey-l E diy-r -
 D rey -/2 E uh/2 F druh/2 puh/2 E fguh/2 D ldeh/2 F nsuh-n:2 -:2

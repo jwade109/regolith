@@ -52,7 +52,7 @@ a whole.
 Note: you should be able to swap around in tracks at any time; for example:
 
 ```regolith
----SECTION---
+===SECTION===
 [1] | . . _ . | . . _ . | . . _ . |
 [2] | _ . _ . | _ . _ . | _ . _ . |
 [3] | . _ . _ | . _ . _ | . _ . _ |

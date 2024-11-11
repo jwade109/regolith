@@ -1,7 +1,7 @@
 # test for accuracy of BPM, note durations
 
 ```regolith
-120BPM
+60BPM
 duw duw duw duw duw
 duw duw duw duw duw
 duw duw duw duw duw

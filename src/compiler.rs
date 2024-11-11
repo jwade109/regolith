@@ -1,122 +1,84 @@
-// use anyhow::Result;
-// use std::collections::HashMap;
-// use fraction::{Fraction, ToPrimitive};
-// use anyhow::bail;
+use crate::types::{CompileResult, CompileError};
+use crate::lexer::lex_markdown;
+use crate::lexer::lex_multiline_string;
+use crate::parser::parse_to_ast;
+use crate::semantics::{Composition, do_semantics};
+use crate::codegen::generate_mb_code;
+use crate::moonbase::create_dir;
 
-// use crate::lexer::*;
-// use crate::moonbase::{to_moonbase_str, MoonbaseNote, generate_moonbase};
+use std::path::Path;
 
-// #[derive(Debug)]
-// struct Sequence
-// {
-//     id: u8,
-//     notes: Vec<MoonbaseNote> // TODO public?
-// }
+pub enum CompileInput<'a>
+{
+    StringLiteral(&'a String),
+    Markdown(&'a Path)
+}
 
-// #[derive(Debug)]
-// pub struct Section
-// {
-//     name: String,
-//     tracks: Vec<Track>
-// }
+fn print_composition(comp: &Composition)
+{
+    // for section in &comp.sections
+    // {
+    //     for measure in &section.measures
+    //     {
+    //         // TODO
+    //     }
+    // }
+}
 
-// #[derive(Debug)]
-// pub struct Track
-// {
-//     name: String,
-//     measures: Vec<Vec<Token>>
-// }
+pub fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
+{
+    create_dir(&build_root)?;
 
-// impl Track
-// {
-//     fn beats(&self) -> Fraction
-//     {
-//         self.measures.iter().map(|m| count_beats(m)).sum()
-//     }
-// }
+    let build_name = match input
+    {
+        CompileInput::StringLiteral(s) =>
+        {
+            let hash = md5::compute(&s);
+            format!("string-literal-{:x}", hash)
+        },
+        CompileInput::Markdown(p) =>
+        {
+            // let bytes = std::fs::read(p).unwrap();
+            // let hash = md5::compute(&bytes);
 
-// fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
-// {
-//     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
-// }
+            let err = || {
+                CompileError::Generic("Bad filename".to_string())
+            };
 
-// fn count_beats(tokens: &[Token]) -> Fraction
-// {
-//     tokens.iter().map(|t|
-//     {
-//         if let Token::Note(r) = t
-//         {
-//             r.beats
-//         }
-//         else
-//         {
-//             Fraction::new(0u64, 1u64)
-//         }
-//     }).sum()
-// }
+            let file_name = p.file_name().ok_or_else(err)?.to_str().ok_or_else(err)?;
 
-// #[test]
-// fn how_many_beats_are_there()
-// {
-//     assert_eq!(Fraction::new(0u64, 1u64), count_beats(&[]));
-//     assert_eq!(Fraction::new(3u64, 4u64), count_beats(&
-//     [
-//         Token::Note(RegoNote
-//         {
-//             prefix: String::new(),
-//             suffix: String::new(),
-//             beats: Fraction::new(2u64, 4u64),
-//         }),
-//         Token::Note(RegoNote
-//         {
-//             prefix: String::new(),
-//             suffix: String::new(),
-//             beats: Fraction::new(1u64, 4u64),
-//         })
-//     ]));
-// }
+            // format!("{}-{:x}", file_name, hash)
+            file_name.to_string()
+        }
+    };
 
-// fn generate_from_sequences(sequences: &Vec<Sequence>) -> Result<()>
-// {
-//     for seq in sequences
-//     {
-//         let mb = seq.notes.iter().map(to_moonbase_str)
-//             .collect::<Vec<String>>().join("");
-//         let _path = generate_moonbase(&mb)?;
-//     }
-//     Ok(())
-// }
+    let build_dir = build_root.join(build_name);
 
-// #[allow(unused_macros)]
-// macro_rules! assert_result
-// {
-//     ($to_test: expr, $on_ok: expr) =>
-//     {
-//         match $to_test
-//         {
-//             Ok(result) => assert_eq!(result, $on_ok),
-//             Err(error) =>
-//             {
-//                 println!("Error: {:?}", error);
-//                 assert!(false);
-//             }
-//         }
-//     }
-// }
+    println!("Build directory: {}", build_dir.display());
 
-// // #[test]
-// // fn compile_songs()
-// // {
-// //     assert_result!(compile("examples/batman.reg",     "rust_songs/batman.wav"),     ());
-// //     assert_result!(compile("examples/campfire.reg",   "rust_songs/campfire.wav"),   ());
-// //     assert_result!(compile("examples/choir_test.reg", "rust_songs/choir_test.wav"), ());
-// //     assert_result!(compile("examples/dynamics.reg",   "rust_songs/dynamics.wav"),   ());
-// //     assert_result!(compile("examples/hbjm.reg",       "rust_songs/hbjm.wav"),       ());
-// //     assert_result!(compile("examples/regularity.reg", "rust_songs/regularity.wav"), ());
-// //     assert_result!(compile("examples/scales.reg",     "rust_songs/scales.wav"),     ());
-// //     assert_result!(compile("examples/mariah.reg",     "rust_songs/mariah.wav"),     ());
+    create_dir(&build_dir)?;
 
-// //     assert_result!(compile(
-// //         "examples/thelionsleepstonight.reg",
-// //         "/tmp/thelionsleepstonight.wav"), ());
-// // }
+    let cache_dir = build_root.join("cache");
+    create_dir(&cache_dir)?;
+
+    let tokens = match input
+    {
+        CompileInput::StringLiteral(s) =>
+        {
+            lex_multiline_string(s)
+        },
+        CompileInput::Markdown(p) =>
+        {
+            lex_markdown(p)
+        }
+    }?;
+
+    let tree = parse_to_ast(&tokens)?;
+    let comp = do_semantics(&tree)?;
+    print_composition(&comp);
+    generate_mb_code(&comp, &cache_dir, &build_dir)?;
+
+    println!("Done.\n");
+
+    Ok(())
+}

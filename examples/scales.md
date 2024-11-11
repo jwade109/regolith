@@ -3,7 +3,6 @@
 ## C major
 
 ```regolith
-3/4
 
 CMAJOR
 | 1 . 2 . 3 . | 4 . 5 . 6 . | 7 . 8 . - |
@@ -13,7 +12,6 @@ CMAJOR
 
 ```regolith
 ======
-4/4
 CPENTA
 | 1 . 2 . 3 . 4 . | 5 . 6 .:2 - |
 ```

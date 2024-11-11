@@ -127,7 +127,32 @@ pub fn create_dir(p: &Path) -> Result<(), std::io::Error>
     }
 }
 
-pub fn generate_moonbase(moonbase: &str, tmp_dir: &Path) -> CompileResult<PathBuf>
+#[derive(Debug)]
+pub enum MoonbaseError
+{
+    FileError(std::io::Error),
+    NetworkError(reqwest::Error)
+}
+
+impl From<std::io::Error> for MoonbaseError
+{
+    fn from(error: std::io::Error) -> Self
+    {
+        MoonbaseError::FileError(error)
+    }
+}
+
+impl From<reqwest::Error> for MoonbaseError
+{
+    fn from(error: reqwest::Error) -> Self
+    {
+        MoonbaseError::NetworkError(error)
+    }
+}
+
+type MoonbaseResult<T> = Result<T, MoonbaseError>;
+
+pub fn generate_moonbase(moonbase: &str, tmp_dir: &Path) -> MoonbaseResult<PathBuf>
 {
     // TODO
     // let num_attempts = 10;
@@ -157,7 +182,7 @@ fn moonbase_gen()
 
     assert_eq!(
         generate_moonbase("[duw<500,19>] [duw<500,19>]", tmp_dir).unwrap(),
-        Path::new("/tmp/regolith/0f4ed7068d8362b1c2dafa2baea51b5d.wav")
+        Path::new("/tmp/0f4ed7068d8362b1c2dafa2baea51b5d.wav")
     );
 
     assert_eq!(

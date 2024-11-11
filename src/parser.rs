@@ -46,7 +46,7 @@ pub enum StaffNode
     Track
     {
         literal: Literal,
-        track_id: String,
+        track_id: u32,
     },
     ScaleDegree
     {
@@ -463,6 +463,11 @@ pub fn print_tree(tree: &AST)
     println!("{}", tree_to_string(tree))
 }
 
+fn pluralize<T: std::cmp::PartialEq<usize>>(count: T) -> &'static str
+{
+    if count == (1 as usize) { "" } else { "s" }
+}
+
 pub fn print_error(error: &CompileError)
 {
     match error
@@ -476,7 +481,7 @@ pub fn print_error(error: &CompileError)
         CompileError::Generic(msg) |
         CompileError::GenericSyntax(msg) =>
         {
-            println!("\n  Generic parse error: {}\n", msg);
+            println!("\n  Generic error: {}\n", msg);
         },
         CompileError::Unexpected(msg, token, literal) =>
         {
@@ -525,6 +530,21 @@ pub fn print_error(error: &CompileError)
         CompileError::TrackTooLarge =>
         {
             println!("\n    {}\n\n", "Track too large; API call failed.".bold());
+        }
+        CompileError::TooManyRequests =>
+        {
+            println!("\n    {}\n\n", "Too many API requests!".bold());
+        }
+        CompileError::DifferingMeasureCounts(ta, asize, tb, bsize) =>
+        {
+            println!("\n    {}\n", "Tracks have inconsistent length.".bold());
+            println!("    Track {} has {} measure{};", ta, asize, pluralize(*asize));
+            println!("    Track {} has {} measure{}.\n", tb, bsize, pluralize(*bsize));
+        }
+        CompileError::EmptyTrack(idx) =>
+        {
+            println!("\n    {}\n\n",
+                format!("Track {} contains no measures.", idx).bold());
         }
     }
 }

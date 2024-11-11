@@ -70,11 +70,11 @@ pub fn pitch_string_to_id(pitch: &str) -> Option<ToneId>
 #[test]
 fn pitch_string_conversions()
 {
-    assert_eq!(pitch_string_to_id("C1"),  Some(1));
-    assert_eq!(pitch_string_to_id("D2#"), Some(16));
-    assert_eq!(pitch_string_to_id("A2#"), Some(23));
-    assert_eq!(pitch_string_to_id("G3"),  Some(32));
-    assert_eq!(pitch_string_to_id("C4"),  Some(37));
+    assert_eq!(pitch_string_to_id("C1"),  Some(ToneId(1)));
+    assert_eq!(pitch_string_to_id("D2#"), Some(ToneId(16)));
+    assert_eq!(pitch_string_to_id("A2#"), Some(ToneId(23)));
+    assert_eq!(pitch_string_to_id("G3"),  Some(ToneId(32)));
+    assert_eq!(pitch_string_to_id("C4"),  Some(ToneId(37)));
     assert_eq!(pitch_string_to_id(""),    None);
     assert_eq!(pitch_string_to_id("J3"),  None);
     assert_eq!(pitch_string_to_id("Bb"),  None);
@@ -304,7 +304,7 @@ fn lex_literal(literal: &str) -> Option<Token>
 
     let measure_bar_re = regex!(r"^(:?)\|(:?)$");
     let bpm_token_re = regex!(r"^(\d+)BPM$");
-    let track_token_re = regex!(r"^\[([^\s-]*)\]$");
+    let track_token_re = regex!(r"^\[(\d+)\]$");
     let pitch_token_re = regex!(r"^[A-Z]\d?#?$");
     let scale_degree_re = regex!(r"^(\d+)([#b])?$");
     let note_token_re = regex!(r"^([a-z\.]+)\-?([a-z\.]+)?(:(\d+))?(\/(\d+))?$");
@@ -322,7 +322,8 @@ fn lex_literal(literal: &str) -> Option<Token>
 
     lex_rule!(&literal, track_token_re, |cap: &[Option<String>]|
     {
-        Some(Token::Track(get_nth_capture(cap, 1)?))
+        let track_id : u32 = get_nth_capture(cap, 1)?.parse().ok()?;
+        Some(Token::Track(track_id))
     });
 
     lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
@@ -509,9 +510,9 @@ fn note_lexing()
 #[test]
 fn absolute_pitch_lexing()
 {
-    lex_assert!("C", Token::AbsolutePitch(13));
-    lex_assert!("D", Token::AbsolutePitch(15));
-    lex_assert!("E", Token::AbsolutePitch(17));
+    lex_assert!("C", Token::AbsolutePitch(ToneId(13)));
+    lex_assert!("D", Token::AbsolutePitch(ToneId(15)));
+    lex_assert!("E", Token::AbsolutePitch(ToneId(17)));
 }
 
 #[test]
@@ -597,11 +598,11 @@ fn bpm_lexing()
 #[test]
 fn track_lexing()
 {
-    lex_assert!("[0]",  Token::Track("0".to_string()));
-    lex_assert!("[1]",  Token::Track("1".to_string()));
-    lex_assert!("[2]",  Token::Track("2".to_string()));
-    lex_assert!("[9]",  Token::Track("9".to_string()));
-    lex_assert!("[12]", Token::Track("12".to_string()));
+    lex_assert!("[0]",  Token::Track(0));
+    lex_assert!("[1]",  Token::Track(1));
+    lex_assert!("[2]",  Token::Track(2));
+    lex_assert!("[9]",  Token::Track(9));
+    lex_assert!("[12]", Token::Track(12));
 }
 
 #[test]

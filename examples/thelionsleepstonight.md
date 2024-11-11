@@ -9,7 +9,7 @@ Wee heeheehee weeoh aweem away
 Wee heeheehee weeoh aweem away
 
 ```regolith
-[background]
+[0]
 F wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3 wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3
 D wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3 wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3
 C wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3 wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3
@@ -23,7 +23,7 @@ C wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3 wiy:2/3 muh:1/3 weh-t:2/3 ah:1/3
 ## track 2 - main lyrics
 
 ```regolith
-[main]
+[1]
 F  ih-n G the/2  A jhuh-n  G guh-l A the/3
 A# may  A tiy/2  G jhuh-n  F guh-l G the/3
 A  lay  G uh-n/2 F sliy-ps A tuw/2 G nay-t:2 -:2

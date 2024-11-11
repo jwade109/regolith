@@ -10,8 +10,18 @@ anyhow = "1.0.75"
 argparse = "0.2.2"
 colored = "2.1.0"
 fraction = "0.14.0"
+glob = "0.3.1"
 indoc = "2.0.5"
 md5 = "0.7.0"
 regex = "1.10.2"
 regex-macro = "0.2.0"
 reqwest = { version = "0.11.22", features = ["blocking", "json"] }
+
+[lib]
+name = "regolith"
+
+[[bin]]
+name = "rc"
+
+[[bin]]
+name = "compile_all"
