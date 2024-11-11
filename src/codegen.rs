@@ -87,8 +87,8 @@ fn write_samples(samples: &Vec<i16>, out: &Path, spec: &WavSpec) -> CompileResul
 fn overlay_tracks(tracks: &[PathBuf], out: &Path) -> CompileResult<()>
 {
     let (samples, spec) = load_samples(tracks)?;
-    let len: usize = samples.iter().map(|s| s.len()).min().unwrap();
-    let sum : Vec<i16> = (0..len).map(|i: usize| (0..tracks.len()).map(|j| samples[j][i]).sum()).collect();
+    let len: usize = samples.iter().map(|s| s.len()).max().unwrap();
+    let sum : Vec<i16> = (0..len).map(|i: usize| (0..tracks.len()).map(|j| samples[j].get(i).unwrap_or(&0)).sum()).collect();
     write_samples(&sum, out, &spec)?;
     Ok(())
 }
@@ -96,9 +96,18 @@ fn overlay_tracks(tracks: &[PathBuf], out: &Path) -> CompileResult<()>
 fn append_tracks(tracks: &[PathBuf], out: &Path) -> CompileResult<()>
 {
     let (samples, spec) = load_samples(tracks)?;
-    let concat : Vec<i16> = samples.into_iter().flatten().collect();
+    let concat : Vec<i16> = samples.into_iter().map(|v|
+    {
+        drop_last_n_samples(&v, 5500)
+    }).flatten().collect();
     write_samples(&concat, out, &spec)?;
     Ok(())
+}
+
+fn drop_last_n_samples(sample: &Vec<i16>, n: usize) -> Vec<i16>
+{
+    let last = sample.len() - n;
+    sample[0..last].to_vec()
 }
 
 pub fn generate_mb_code(comp: &Composition, cache_dir: &Path, build_dir: &Path) -> CompileResult<()>

@@ -50,7 +50,4 @@ Wee heeheehee weeoh aweem away
 [1]
 | C3 wiy:4 | A2# iy:2 C3 wiy:3/2 A2# uh/2 |
 | A2 wiy C2 uh-m/2 uh-m uh/4 wey:5/4 | iy:1 -:3 |
-[2]
-| C3 wiy:4 | A2# iy:2 C3 wiy:3/2 A2# uh/2 |
-| A2 wiy C2 uh-m/2 uh-m uh/4 wey:5/4 | iy:1 -:3 |
 ```

@@ -172,6 +172,7 @@ pub fn generate_moonbase(moonbase: &str, tmp_dir: &Path) -> MoonbaseResult<PathB
     let mut file = File::create(&outpath)?;
     let bytes = resp.bytes()?;
     file.write_all(&bytes)?;
+    println!("Writing audio: {}", outpath.display());
     return Ok(outpath);
 }
 
