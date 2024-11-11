@@ -32,6 +32,14 @@ impl From<std::io::Error> for CompileError
     }
 }
 
+impl From<hound::Error> for CompileError
+{
+    fn from(error: hound::Error) -> Self
+    {
+        CompileError::Generic("Hound error".to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Literal
 {
@@ -94,12 +102,28 @@ impl Scale
     }
 }
 
-pub fn sample_scale(scale: &Scale, degree: usize) -> ToneId
+pub fn sample_scale(scale: &Scale, degree: u8) -> ToneId
 {
-    // TODO this might panic if degree is too big or negative!
-    let d: usize = degree % scale.steps.len();
+    let octaves: u8 = (degree - 1) / scale.steps.len() as u8;
+    let d: u8 = (degree - 1) % scale.steps.len() as u8;
     let ToneId(root) = scale.tone_id;
-    ToneId(root + scale.steps[0..d].iter().sum::<u8>())
+    let steps = scale.steps[0..(d as usize)].iter().sum::<u8>();
+    ToneId((octaves * 12 as u8 + root + steps))
+}
+
+#[test]
+fn test_sample_scale()
+{
+    let scale = Scale::cmajor();
+
+    assert_eq!(sample_scale(&scale, 1), ToneId(13));
+    assert_eq!(sample_scale(&scale, 2), ToneId(15));
+    assert_eq!(sample_scale(&scale, 3), ToneId(17));
+    assert_eq!(sample_scale(&scale, 4), ToneId(18));
+    assert_eq!(sample_scale(&scale, 5), ToneId(20));
+    assert_eq!(sample_scale(&scale, 6), ToneId(22));
+    assert_eq!(sample_scale(&scale, 7), ToneId(24));
+    assert_eq!(sample_scale(&scale, 8), ToneId(25));
 }
 
 pub type TimeSignature = (u8, u8);
@@ -112,7 +136,7 @@ pub enum Token
     AbsolutePitch(ToneId),
     Note(RegoNote),
     Scale(Scale),
-    ScaleDegree(i32),
+    ScaleDegree(u8),
     Dynamic(DynamicLevel),
     MeasureBar(bool, bool),
     Section(String),

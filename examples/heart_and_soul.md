@@ -3,7 +3,7 @@
 ## preamble
 
 ```regolith
-180BPM C1MAJOR
+140BPM C1MAJOR
 ```
 
 ## track 1

@@ -51,7 +51,7 @@ pub enum StaffNode
     ScaleDegree
     {
         literal: Literal,
-        degree: i32,
+        degree: u8,
     },
     MeasureBar
     {

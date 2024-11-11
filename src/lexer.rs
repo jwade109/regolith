@@ -387,7 +387,7 @@ fn lex_literal(literal: &str) -> Option<Token>
 
     lex_rule!(&literal, scale_degree_re, |cap: &[Option<String>]|
     {
-        let d : i32 = get_nth_capture(cap, 1)?.parse().ok()?;
+        let d : u8 = get_nth_capture(cap, 1)?.parse().ok()?;
         Some(Token::ScaleDegree(d))
     });
 

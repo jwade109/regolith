@@ -150,7 +150,7 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
                 },
                 StaffNode::ScaleDegree { literal: _, degree } =>
                 {
-                    state.tone_id = sample_scale(&state.scale, *degree as usize);
+                    state.tone_id = sample_scale(&state.scale, *degree);
                 },
                 StaffNode::Track { literal: _, track_id } =>
                 {
@@ -196,8 +196,6 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
             notes
         };
 
-        println!("{:?} {:?}", m.track, m.start);
-
         if tracks.get(&m.track).is_none()
         {
             tracks.insert(m.track, vec![]);
@@ -231,16 +229,6 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
             }
         }
     }
-
-    // for (tid, meas) in &tracks
-    // {
-    //     dbg!(tid);
-    //     dbg!(meas.len());
-    //     for m in meas
-    //     {
-    //         dbg!(m.track);
-    //     }
-    // }
 
     let s = Section
     {
