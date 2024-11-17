@@ -32,6 +32,7 @@ fn generate_moonbase_or_error(moonbase: &str, tmp_dir: &Path) -> CompileResult<P
         Ok(path) => Ok(path),
         Err(e) => match e
         {
+            MoonbaseError::Generic => return Err(CompileError::Generic("Woopsies!".to_string())),
             MoonbaseError::FileError(fe) => return Err(CompileError::FileError(fe)),
             MoonbaseError::NetworkError(ne) =>
             {
@@ -41,10 +42,8 @@ fn generate_moonbase_or_error(moonbase: &str, tmp_dir: &Path) -> CompileResult<P
                     {
                         match status
                         {
-                            StatusCode::TOO_MANY_REQUESTS => return Err(CompileError::TooManyRequests),
                             StatusCode::PAYLOAD_TOO_LARGE =>
                             {
-
                                 return Err(CompileError::TrackTooLarge)
                             }
                             _ => return Err(CompileError::NetworkError(ne)),

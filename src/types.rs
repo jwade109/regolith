@@ -19,7 +19,6 @@ pub enum CompileError
     FileError(std::io::Error),
     NetworkError(reqwest::Error),
     TrackTooLarge,
-    TooManyRequests,
     DifferingMeasureCounts(u32, usize, u32, usize),
     EmptyTrack(u32),
 }

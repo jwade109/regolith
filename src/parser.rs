@@ -531,10 +531,6 @@ pub fn print_error(error: &CompileError)
         {
             println!("\n    {}\n\n", "Track too large; API call failed.".bold());
         }
-        CompileError::TooManyRequests =>
-        {
-            println!("\n    {}\n\n", "Too many API requests!".bold());
-        }
         CompileError::DifferingMeasureCounts(ta, asize, tb, bsize) =>
         {
             println!("\n    {}\n", "Tracks have inconsistent length.".bold());

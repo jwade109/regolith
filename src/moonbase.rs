@@ -1,3 +1,5 @@
+use reqwest::{Request, StatusCode};
+
 #[allow(warnings)]
 
 use crate::types::{CompileError, CompileResult, ToneId};
@@ -130,6 +132,7 @@ pub fn create_dir(p: &Path) -> Result<(), std::io::Error>
 #[derive(Debug)]
 pub enum MoonbaseError
 {
+    Generic,
     FileError(std::io::Error),
     NetworkError(reqwest::Error)
 }
@@ -155,8 +158,8 @@ type MoonbaseResult<T> = Result<T, MoonbaseError>;
 pub fn generate_moonbase(moonbase: &str, tmp_dir: &Path) -> MoonbaseResult<PathBuf>
 {
     // TODO
-    // let num_attempts = 10;
-    // let backoff_dur = Duration::new(2, 0);
+    let num_attempts = 10;
+    let backoff_dur = Duration::new(4, 0);
 
     let outpath = hashed_fn(moonbase, "wav", tmp_dir);
     if outpath.exists()
@@ -166,14 +169,26 @@ pub fn generate_moonbase(moonbase: &str, tmp_dir: &Path) -> MoonbaseResult<PathB
 
     let url = format!("http://tts.cyzon.us/tts?text={}", moonbase);
 
-    let resp = reqwest::blocking::get(&url)?;
-    resp.error_for_status_ref()?;
-    create_dir(tmp_dir)?;
-    let mut file = File::create(&outpath)?;
-    let bytes = resp.bytes()?;
-    file.write_all(&bytes)?;
-    println!("Writing audio: {}", outpath.display());
-    return Ok(outpath);
+    for _ in 0..num_attempts
+    {
+        let resp = reqwest::blocking::get(&url)?;
+        if resp.status() == StatusCode::TOO_MANY_REQUESTS
+        {
+            std::thread::sleep(backoff_dur);
+            continue;
+        }
+
+        resp.error_for_status_ref()?;
+
+        create_dir(tmp_dir)?;
+        let mut file = File::create(&outpath)?;
+        let bytes = resp.bytes()?;
+        file.write_all(&bytes)?;
+        println!("Writing audio: {}", outpath.display());
+        return Ok(outpath);
+    }
+
+    Err(MoonbaseError::Generic)
 }
 
 #[test]
