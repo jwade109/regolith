@@ -8,24 +8,13 @@ use crate::moonbase::create_dir;
 
 use std::path::Path;
 
-pub enum CompileInput<'a>
+pub enum CompileInput
 {
-    StringLiteral(&'a String),
-    Markdown(&'a Path)
+    StringLiteral(String),
+    Markdown(Path)
 }
 
-fn print_composition(comp: &Composition)
-{
-    // for section in &comp.sections
-    // {
-    //     for measure in &section.measures
-    //     {
-    //         // TODO
-    //     }
-    // }
-}
-
-pub fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
+pub fn compile<>(input: &CompileInput, build_root: &Path) -> CompileResult<()>
 {
     create_dir(&build_root)?;
 
@@ -42,7 +31,7 @@ pub fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
             // let hash = md5::compute(&bytes);
 
             let err = || {
-                CompileError::Generic("Bad filename".to_string())
+                CompileError::Generic("Bad filename")
             };
 
             let file_name = p.file_name().ok_or_else(err)?.to_str().ok_or_else(err)?;
@@ -75,7 +64,7 @@ pub fn compile(input: &CompileInput, build_root: &Path) -> CompileResult<()>
 
     let tree = parse_to_ast(&tokens)?;
     let comp = do_semantics(&tree)?;
-    print_composition(&comp);
+
     generate_mb_code(&comp, &cache_dir, &build_dir)?;
 
     println!("Done.\n");

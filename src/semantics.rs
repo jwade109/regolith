@@ -3,21 +3,21 @@ use crate::parser::*;
 use fraction::Fraction;
 use std::collections::HashMap;
 
-type TrackMap = HashMap<u32, Vec<Measure>>;
+type TrackMap<> = HashMap<u32, Vec<Measure<>>>;
 
 #[derive(Debug)]
-pub struct Section
+pub struct Section<>
 {
     pub id: u32,
-    pub name: String,
+    pub name: & str,
     pub tempo: u16,
     pub dynamic: DynamicLevel,
     pub scale: Scale,
-    pub time_signature: Option<(Literal, TimeSignature)>,
-    pub tracks: TrackMap
+    pub time_signature: Option<(& Token, TimeSignature)>,
+    pub tracks: TrackMap<>
 }
 
-impl Section
+impl<> Section<>
 {
     pub fn to_string(&self) -> String
     {
@@ -25,13 +25,13 @@ impl Section
             format!("[section] \"{}\", {}, {} bpm, {:?}, {}, {:?}",
             self.id, self.name, self.tempo, self.dynamic, self.scale.name,
             self.time_signature)];
-        for (track_id, measures) in &self.tracks
+        for (_, measures) in &self.tracks
         {
             for measure in measures
             {
                 let s = format!("  [measure] [track \"{}\"] ({} beats) {}",
                     measure.track, measure.count_beats(),
-                    measure.notes.iter().map(|n| n.note_literal.literal.clone())
+                    measure.notes.iter().map(|n| n.decl.literal.literal.clone())
                     .collect::<Vec<_>>().join(" "));
                 sections.push(s);
             }
@@ -41,22 +41,22 @@ impl Section
 }
 
 #[derive(Debug)]
-pub struct Composition
+pub struct Composition<>
 {
-    pub sections: Vec<Section>
+    pub sections: Vec<Section<>>
 }
 
-struct CompositionState
+struct CompositionState<>
 {
     tempo: u16,
     dynamic: DynamicLevel,
     scale: Scale,
-    time_signature: Option<(Literal, TimeSignature)>,
+    time_signature: Option<(& Token, TimeSignature)>,
     tone_id: ToneId,
     track: u32
 }
 
-impl CompositionState
+impl<> CompositionState<>
 {
     fn defaults() -> Self
     {
@@ -72,7 +72,7 @@ impl CompositionState
     }
 }
 
-fn assert_consistent_measure_counts(section: &Section) -> CompileResult<()>
+fn assert_consistent_measure_counts<>(section: &Section) -> CompileResult<()>
 {
     let mut baseline = None;
     for (track_id, measures) in &section.tracks
@@ -98,27 +98,27 @@ fn assert_consistent_measure_counts(section: &Section) -> CompileResult<()>
     Ok(())
 }
 
-fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) -> CompileResult<Section>
+fn make_section<>(id: u32, section: & SectionNode, state: &mut CompositionState) -> CompileResult<Section<>>
 {
     for node in &section.preamble
     {
         match node
         {
-            PreambleNode::DynamicLevel { literal: _, level } =>
+            PreambleNode::DynamicLevel { token: _, level } =>
             {
                 state.dynamic = level.clone();
             },
-            PreambleNode::Scale { literal: _, scale } =>
+            PreambleNode::Scale { token: _, scale } =>
             {
                 state.scale = scale.clone();
             },
-            PreambleNode::TimeSignature { literal, ratio } =>
+            PreambleNode::TimeSignature { token, ratio } =>
             {
-                state.time_signature = Some((literal.clone(), ratio.clone()));
+                state.time_signature = Some((token, ratio.clone()));
             },
-            PreambleNode::Tempo { literal: _, tempo } =>
+            PreambleNode::Tempo { token: _, tempo } =>
             {
-                state.tempo = tempo.clone();
+                state.tempo = *tempo;
             }
             PreambleNode::Endline(_) => (),
         }
@@ -134,32 +134,32 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
         {
             match snode
             {
-                StaffNode::Note { literal, note } =>
+                StaffNode::Note { token, note } =>
                 {
                     let n = NoteDecl
                     {
-                        note: note.clone(),
-                        note_literal: literal.clone(),
+                        note,
+                        decl: token,
                         tone_id: state.tone_id
                     };
                     notes.push(n);
                 },
-                StaffNode::AbsolutePitch { literal: _, pitch } =>
+                StaffNode::AbsolutePitch { token: _, pitch } =>
                 {
                     state.tone_id = *pitch;
                 },
-                StaffNode::ScaleDegree { literal: _, degree } =>
+                StaffNode::ScaleDegree { token: _, degree } =>
                 {
                     state.tone_id = sample_scale(&state.scale, *degree);
                 },
-                StaffNode::Track { literal: _, track_id } =>
+                StaffNode::Track { token: _, track_id } =>
                 {
-                    state.track = track_id.clone();
+                    state.track = *track_id;
                 },
-                StaffNode::MeasureBar { literal, .. } |
-                StaffNode::Endline { literal } =>
+                StaffNode::MeasureBar { token, .. } |
+                StaffNode::Endline { token } =>
                 {
-                    return Err(CompileError::InvalidSyntax(literal.clone()));
+                    return Err(CompileError::InvalidSyntax(token.literal.clone()));
                 },
             }
         }
@@ -169,7 +169,7 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
             continue;
         }
 
-        let open = if let Token::MeasureBar(_, open) = meas.start.1
+        let open = if let TokenValue::MeasureBar(_, open) = meas.start.token
         {
             open
         }
@@ -177,7 +177,7 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
         {
             false
         };
-        let close = if let Token::MeasureBar(close, _) = meas.end.1
+        let close = if let TokenValue::MeasureBar(close, _) = meas.end.token
         {
             close
         }
@@ -188,8 +188,8 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
 
         let m = Measure
         {
-            start: meas.start.0.clone(),
-            end: meas.end.0.clone(),
+            start: meas.start,
+            end: meas.end,
             close,
             open,
             track: state.track.clone(),
@@ -222,7 +222,7 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
                     return Err(CompileError::TimeSignatureViolation
                     {
                         measure: meas.clone(),
-                        time_signature: ts.0.clone(),
+                        time_signature: ts.0,
                         nominal: ts.1
                     });
                 }
@@ -246,7 +246,7 @@ fn make_section(id: u32, section: &SectionNode, state: &mut CompositionState) ->
     return Ok(s)
 }
 
-pub fn do_semantics(tree: &AST) -> CompileResult<Composition>
+pub fn do_semantics<>(tree: & AST) -> CompileResult<Composition<>>
 {
     let mut state = CompositionState::defaults();
 

@@ -32,7 +32,7 @@ fn generate_moonbase_or_error(moonbase: &str, tmp_dir: &Path) -> CompileResult<P
         Ok(path) => Ok(path),
         Err(e) => match e
         {
-            MoonbaseError::Generic => return Err(CompileError::Generic("Woopsies!".to_string())),
+            MoonbaseError::Generic => return Err(CompileError::Generic("Woopsies!")),
             MoonbaseError::FileError(fe) => return Err(CompileError::FileError(fe)),
             MoonbaseError::NetworkError(ne) =>
             {
@@ -146,7 +146,7 @@ pub fn generate_mb_code(comp: &Composition, cache_dir: &Path, build_dir: &Path) 
             let dst: std::path::PathBuf = build_dir.join(format!(
                 "section-{}-track-{}.wav", section.id, track_id
             ));
-            std::fs::copy(&res, &dst);
+            std::fs::copy(&res, &dst)?;
 
             return Ok::<PathBuf, CompileError>(res);
 

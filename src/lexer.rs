@@ -106,7 +106,7 @@ fn named_scale_lookup()
     assert_eq!(get_named_scale_steps(""),      None);
 }
 
-pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> CompileResult<Vec<Literal>>
+pub fn read_literals_from_multiline_string<>(source: &str, filename: &str) -> CompileResult<Vec<Literal>>
 {
     let mut result = Vec::new();
     let mut idno = 0;
@@ -151,8 +151,8 @@ pub fn read_literals_from_multiline_string(source: &str, filename: &str) -> Comp
 fn read_literals_from_file(filename: &Path) -> CompileResult<Vec<Literal>>
 {
     read_literals_from_multiline_string(&read_to_string(filename)
-        .or(Err(CompileError::Generic("Failed to open file".to_string())))?,
-        filename.to_str().ok_or(CompileError::Generic("Bad path".to_string()))?)
+        .or(Err(CompileError::Generic("Failed to open file")))?,
+        filename.to_str().ok_or(CompileError::Generic("Bad path"))?)
 }
 
 pub fn read_literals_from_markdown(filename: &Path) -> CompileResult<Vec<Literal>>
@@ -165,10 +165,10 @@ pub fn read_literals_from_markdown(filename: &Path) -> CompileResult<Vec<Literal
     let mut codeblock = false;
 
     let name = filename.to_str().ok_or(
-        CompileError::Generic("Bad filename".to_string()))?.to_string();
+        CompileError::Generic("Bad filename"))?.to_string();
 
     for (lineno, line) in read_to_string(filename)
-        .or(Err(CompileError::Generic("Failed to open file".to_string())))?.lines().enumerate()
+        .or(Err(CompileError::Generic("Failed to open file")))?.lines().enumerate()
     {
         if line.is_empty() || line.starts_with('#')
         {
@@ -282,12 +282,12 @@ fn parse_dynamic_level(level: &str) -> Option<DynamicLevel>
 #[test]
 fn dynamic_lexing()
 {
-    lex_assert!("PIANISSIMO", Token::Dynamic(DynamicLevel::Pianissimo));
-    lex_assert!("PIANO",      Token::Dynamic(DynamicLevel::Piano));
-    lex_assert!("MEZZOPIANO", Token::Dynamic(DynamicLevel::Mezzopiano));
-    lex_assert!("MEZZOFORTE", Token::Dynamic(DynamicLevel::Mezzoforte));
-    lex_assert!("FORTE",      Token::Dynamic(DynamicLevel::Forte));
-    lex_assert!("FORTISSIMO", Token::Dynamic(DynamicLevel::Fortissimo));
+    lex_assert!("PIANISSIMO", TokenValue::Dynamic(DynamicLevel::Pianissimo));
+    lex_assert!("PIANO",      TokenValue::Dynamic(DynamicLevel::Piano));
+    lex_assert!("MEZZOPIANO", TokenValue::Dynamic(DynamicLevel::Mezzopiano));
+    lex_assert!("MEZZOFORTE", TokenValue::Dynamic(DynamicLevel::Mezzoforte));
+    lex_assert!("FORTE",      TokenValue::Dynamic(DynamicLevel::Forte));
+    lex_assert!("FORTISSIMO", TokenValue::Dynamic(DynamicLevel::Fortissimo));
 }
 
 fn get_nth_capture(captures: &[Option<String>], i: usize) -> Option<String>
@@ -295,11 +295,11 @@ fn get_nth_capture(captures: &[Option<String>], i: usize) -> Option<String>
     captures.get(i)?.clone()
 }
 
-fn lex_literal(literal: &str) -> Option<Token>
+fn lex_literal(literal: &str) -> Option<TokenValue>
 {
     if literal == "<eol>"
     {
-        return Some(Token::Endline());
+        return Some(TokenValue::Endline());
     }
 
     let measure_bar_re = regex!(r"^(:?)\|(:?)$");
@@ -317,20 +317,20 @@ fn lex_literal(literal: &str) -> Option<Token>
     lex_rule!(&literal, bpm_token_re, |cap: &[Option<String>]|
     {
         let bpm : u16 = get_nth_capture(cap, 1)?.parse().ok()?;
-        Some(Token::Tempo(bpm))
+        Some(TokenValue::Tempo(bpm))
     });
 
     lex_rule!(&literal, track_token_re, |cap: &[Option<String>]|
     {
         let track_id : u32 = get_nth_capture(cap, 1)?.parse().ok()?;
-        Some(Token::Track(track_id))
+        Some(TokenValue::Track(track_id))
     });
 
     lex_rule!(&literal, pitch_token_re, |cap: &[Option<String>]|
     {
         let s : String = get_nth_capture(cap, 0)?;
         let id = pitch_string_to_id(&s)?;
-        Some(Token::AbsolutePitch(id))
+        Some(TokenValue::AbsolutePitch(id))
     });
 
     lex_rule!(&literal, note_token_re, |cap: &[Option<String>]|
@@ -353,7 +353,7 @@ fn lex_literal(literal: &str) -> Option<Token>
             suffix: cap[2].as_ref().unwrap_or(&"".to_string()).clone(),
             beats: Fraction::new(numer, denom)
         };
-        Some(Token::Note(n))
+        Some(TokenValue::Note(n))
     });
 
     lex_rule!(&literal, scale_decl_re, |cap: &[Option<String>]|
@@ -376,26 +376,26 @@ fn lex_literal(literal: &str) -> Option<Token>
             steps
         };
 
-        Some(Token::Scale(s))
+        Some(TokenValue::Scale(s))
     });
 
     lex_rule!(&literal, dynamic_decl_re, |cap: &[Option<String>]|
     {
         let level = parse_dynamic_level(cap[0].as_ref().unwrap());
-        Some(Token::Dynamic(level.unwrap()))
+        Some(TokenValue::Dynamic(level.unwrap()))
     });
 
     lex_rule!(&literal, scale_degree_re, |cap: &[Option<String>]|
     {
         let d : u8 = get_nth_capture(cap, 1)?.parse().ok()?;
-        Some(Token::ScaleDegree(d))
+        Some(TokenValue::ScaleDegree(d))
     });
 
     lex_rule!(&literal, measure_bar_re, |cap: &[Option<String>]|
     {
         let prefix = get_nth_capture(cap, 1)?;
         let suffix = get_nth_capture(cap, 2)?;
-        Some(Token::MeasureBar(prefix == ":", suffix == ":"))
+        Some(TokenValue::MeasureBar(prefix == ":", suffix == ":"))
     });
 
     lex_rule!(&literal, rest_decl_re, |cap: &[Option<String>]|
@@ -419,63 +419,61 @@ fn lex_literal(literal: &str) -> Option<Token>
             beats: Fraction::new(numer, denom)
         };
 
-        Some(Token::Note(n))
+        Some(TokenValue::Note(n))
     });
 
     lex_rule!(&literal, section_marker_re, |cap: &[Option<String>]|
     {
         let name = get_nth_capture(cap, 1)?;
-        Some(Token::Section(name))
+        Some(TokenValue::Section(name))
     });
 
     lex_rule!(&literal, time_signature_re, |cap: &[Option<String>]|
     {
         let numer : u8 = get_nth_capture(cap, 1)?.parse().ok()?;
         let denom : u8 = get_nth_capture(cap, 2)?.parse().ok()?;
-        Some(Token::TimeSignature((numer, denom)))
+        Some(TokenValue::TimeSignature((numer, denom)))
     });
 
     None
 }
 
-pub fn lex_literals(literals: &Vec<Literal>) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_literals<> (literals: Vec<Literal>) -> CompileResult<Vec<Token>>
 {
     let mut ret = vec![];
     for lit in literals
     {
         let token = lex_literal(&lit.literal)
             .ok_or(CompileError::InvalidSyntax(lit.clone()))?;
-        ret.push((lit.clone(), token));
+        ret.push(Token
+        {
+            literal: lit,
+            token
+        });
     }
     Ok(ret)
 }
 
-pub fn lex_multiline_string(source: &str) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_multiline_string<>(source: &str) -> CompileResult<Vec<Token>>
 {
-    lex_literals(&read_literals_from_multiline_string(source, "")?)
+    lex_literals(read_literals_from_multiline_string(source, "")?)
 }
 
-pub fn lex_file(inpath: &Path) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_file(inpath: &Path) -> CompileResult<Vec<Token>>
 {
-    lex_literals(&read_literals_from_file(inpath)?)
+    lex_literals(read_literals_from_file(inpath)?)
 }
 
-pub fn lex_markdown(inpath: &Path) -> CompileResult<Vec<(Literal, Token)>>
+pub fn lex_markdown(inpath: &Path) -> CompileResult<Vec<Token>>
 {
-    lex_literals(&read_literals_from_markdown(inpath)?)
+    lex_literals(read_literals_from_markdown(inpath)?)
 }
-
-// TODO
-// fn beats_to_millis(beats: &Fraction, bpm: u16) -> Option<i32>
-// {
-//     Some((beats.to_f64()? * 60000.0 / bpm as f64) as i32)
-// }
 
 #[test]
 fn note_lexing()
 {
     lex_assert!("ih-s:3/2",
-    Token::Note(RegoNote
+    TokenValue::Note(RegoNote
     {
         prefix: "ih".to_string(),
         suffix: "s".to_string(),
@@ -483,7 +481,7 @@ fn note_lexing()
     }));
 
     lex_assert!("uh-n/2",
-    Token::Note(RegoNote
+    TokenValue::Note(RegoNote
     {
         prefix: "uh".to_string(),
         suffix: "n".to_string(),
@@ -491,7 +489,7 @@ fn note_lexing()
     }));
 
     lex_assert!("ne/3",
-    Token::Note(RegoNote
+    TokenValue::Note(RegoNote
     {
         prefix: "ne".to_string(),
         suffix: "".to_string(),
@@ -499,7 +497,7 @@ fn note_lexing()
     }));
 
     lex_assert!("-:12",
-    Token::Note(RegoNote
+    TokenValue::Note(RegoNote
     {
         prefix: "_".to_string(),
         suffix: "".to_string(),
@@ -510,18 +508,18 @@ fn note_lexing()
 #[test]
 fn absolute_pitch_lexing()
 {
-    lex_assert!("C", Token::AbsolutePitch(ToneId(13)));
-    lex_assert!("D", Token::AbsolutePitch(ToneId(15)));
-    lex_assert!("E", Token::AbsolutePitch(ToneId(17)));
+    lex_assert!("C", TokenValue::AbsolutePitch(ToneId(13)));
+    lex_assert!("D", TokenValue::AbsolutePitch(ToneId(15)));
+    lex_assert!("E", TokenValue::AbsolutePitch(ToneId(17)));
 }
 
 #[test]
 fn relative_pitch_lexing()
 {
-    lex_assert!("1", Token::ScaleDegree(1));
-    lex_assert!("2", Token::ScaleDegree(2));
-    lex_assert!("5", Token::ScaleDegree(5));
-    lex_assert!("13", Token::ScaleDegree(13));
+    lex_assert!("1", TokenValue::ScaleDegree(1));
+    lex_assert!("2", TokenValue::ScaleDegree(2));
+    lex_assert!("5", TokenValue::ScaleDegree(5));
+    lex_assert!("13", TokenValue::ScaleDegree(13));
 
     lex_nope!("-4");
     lex_nope!("352d");
@@ -530,28 +528,28 @@ fn relative_pitch_lexing()
 #[test]
 fn scale_lexing()
 {
-    lex_assert!("CMAJOR", Token::Scale(Scale
+    lex_assert!("CMAJOR", TokenValue::Scale(Scale
     {
         name: "CMAJOR".to_string(),
         tone_id: ToneId(13),
         steps: vec![2, 2, 1, 2, 2, 2, 1]
     }));
 
-    lex_assert!("AMINOR", Token::Scale(Scale
+    lex_assert!("AMINOR", TokenValue::Scale(Scale
     {
         name: "AMINOR".to_string(),
         tone_id: ToneId(10),
         steps: vec![2, 1, 2, 2, 1, 2, 2]
     }));
 
-    lex_assert!("G#PENTA", Token::Scale(Scale
+    lex_assert!("G#PENTA", TokenValue::Scale(Scale
     {
         name: "G#PENTA".to_string(),
         tone_id: ToneId(21),
         steps: vec![2, 2, 3, 2, 3]
     }));
 
-    lex_assert!("D3#CHROM", Token::Scale(Scale
+    lex_assert!("D3#CHROM", TokenValue::Scale(Scale
     {
         name: "D3#CHROM".to_string(),
         tone_id: ToneId(28),
@@ -568,14 +566,14 @@ fn scale_lexing()
 #[test]
 fn bar_lexing()
 {
-    lex_assert!("|",  Token::MeasureBar(false, false));
-    lex_assert!("|:", Token::MeasureBar(false, true));
-    lex_assert!(":|", Token::MeasureBar(true, false));
-    lex_assert!(":|:", Token::MeasureBar(true, true));
-    // lex_assert!(":|x2",  Token::EndRepeat(2));
-    // lex_assert!(":|x6",  Token::EndRepeat(6));
-    // lex_assert!(":|x12", Token::EndRepeat(12));
-    // lex_assert!(":|x0",  Token::EndRepeat(0));
+    lex_assert!("|",  TokenValue::MeasureBar(false, false));
+    lex_assert!("|:", TokenValue::MeasureBar(false, true));
+    lex_assert!(":|", TokenValue::MeasureBar(true, false));
+    lex_assert!(":|:", TokenValue::MeasureBar(true, true));
+    // lex_assert!(":|x2",  TokenValue::EndRepeat(2));
+    // lex_assert!(":|x6",  TokenValue::EndRepeat(6));
+    // lex_assert!(":|x12", TokenValue::EndRepeat(12));
+    // lex_assert!(":|x0",  TokenValue::EndRepeat(0));
 
     lex_nope!(":|x-1");
     lex_nope!(":|x-5");
@@ -585,10 +583,10 @@ fn bar_lexing()
 #[test]
 fn bpm_lexing()
 {
-    lex_assert!("120BPM",  Token::Tempo(120));
-    lex_assert!("92BPM",   Token::Tempo(92));
-    lex_assert!("1103BPM", Token::Tempo(1103));
-    lex_assert!("0BPM",    Token::Tempo(0));
+    lex_assert!("120BPM",  TokenValue::Tempo(120));
+    lex_assert!("92BPM",   TokenValue::Tempo(92));
+    lex_assert!("1103BPM", TokenValue::Tempo(1103));
+    lex_assert!("0BPM",    TokenValue::Tempo(0));
 
     lex_nope!("-12BPM");
     lex_nope!("CHEESEBPM");
@@ -598,11 +596,11 @@ fn bpm_lexing()
 #[test]
 fn track_lexing()
 {
-    lex_assert!("[0]",  Token::Track(0));
-    lex_assert!("[1]",  Token::Track(1));
-    lex_assert!("[2]",  Token::Track(2));
-    lex_assert!("[9]",  Token::Track(9));
-    lex_assert!("[12]", Token::Track(12));
+    lex_assert!("[0]",  TokenValue::Track(0));
+    lex_assert!("[1]",  TokenValue::Track(1));
+    lex_assert!("[2]",  TokenValue::Track(2));
+    lex_assert!("[9]",  TokenValue::Track(9));
+    lex_assert!("[12]", TokenValue::Track(12));
 }
 
 #[test]
@@ -616,8 +614,8 @@ fn garbage_lexing()
 #[test]
 fn section_lexing()
 {
-    lex_assert!("======",      Token::Section("".to_string()));
-    lex_assert!("===hello===", Token::Section("hello".to_string()));
-    lex_assert!("===GOO===",   Token::Section("GOO".to_string()));
-    lex_assert!("===34g===",   Token::Section("34g".to_string()));
+    lex_assert!("======",      TokenValue::Section("".to_string()));
+    lex_assert!("===hello===", TokenValue::Section("hello".to_string()));
+    lex_assert!("===GOO===",   TokenValue::Section("GOO".to_string()));
+    lex_assert!("===34g===",   TokenValue::Section("34g".to_string()));
 }

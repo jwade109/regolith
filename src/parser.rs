@@ -9,25 +9,25 @@ pub enum PreambleNode
 {
     Tempo
     {
-        literal: Literal,
+        token: & Token,
         tempo: u16,
     },
     Scale
     {
-        literal: Literal,
+        token: & Token,
         scale: Scale,
     },
     DynamicLevel
     {
-        literal: Literal,
+        token: & Token,
         level: DynamicLevel,
     },
     TimeSignature
     {
-        literal: Literal,
+        token: & Token,
         ratio: TimeSignature,
     },
-    Endline(Literal),
+    Endline(& Token),
 }
 
 #[derive(Debug, Clone)]
@@ -35,41 +35,41 @@ pub enum StaffNode
 {
     AbsolutePitch
     {
-        literal: Literal,
+        token: & Token,
         pitch: ToneId,
     },
     Note
     {
-        literal: Literal,
+        token: & Token,
         note: RegoNote,
     },
     Track
     {
-        literal: Literal,
+        token: & Token,
         track_id: u32,
     },
     ScaleDegree
     {
-        literal: Literal,
+        token: & Token,
         degree: u8,
     },
     MeasureBar
     {
         close: bool,
         open: bool,
-        literal: Literal,
+        token: & Token,
     },
     Endline
     {
-        literal: Literal
+        token: & Token
     },
 }
 
 #[derive(Debug, Clone)]
 pub struct SectionNode
 {
-    pub literal: Literal,
-    pub name: String,
+    pub token: & Token,
+    pub name: & str,
     pub preamble: Vec<PreambleNode>,
     pub measures: Vec<MeasureNode>
 }
@@ -77,8 +77,8 @@ pub struct SectionNode
 #[derive(Debug, Clone)]
 pub struct MeasureNode
 {
-    pub start: (Literal, Token),
-    pub end: (Literal, Token),
+    pub start: Token,
+    pub end: Token,
     pub staff: Vec<StaffNode>
 }
 
@@ -86,86 +86,112 @@ pub type AST = Vec<SectionNode>;
 
 struct Parser
 {
-    tokens: Vec<(Literal, Token)>
+    tokens: Vec<Token>,
+    index: u32
 }
 
 impl Parser
 {
-    fn new(tokens: &Vec<(Literal, Token)>) -> Self
+    fn new(tokens: & Vec<Token>) -> Self
     {
-        Parser { tokens: tokens.iter().rev().map(
-            |(l, t)| (l.clone(), t.clone())).collect() }
+        Parser { tokens, index: (tokens.len() - 1) as u32 }
     }
 
-    fn peek(&self) -> Option<&(Literal, Token)>
+    fn peek(&self) -> Option<Token>
     {
-        return self.tokens.last()
+        self.tokens.get(self.index as usize).map(|e| e.clone())
     }
 
-    fn peek_copy(&self) -> Option<(Literal, Token)>
+    fn peek_ref(&self) -> Option<&Token>
     {
-        return self.tokens.last().cloned()
+        self.tokens.get(self.index as usize)
     }
 
-    fn take(&mut self) -> Option<(Literal, Token)>
+    fn peek_and_take_if<'b, F: Fn(&Token) -> bool>(&'b mut self, f: F) -> Option<Token>
     {
-        return self.tokens.pop()
+        let ret = self.peek_ref().map(f)?;
+        if ret
+        {
+            self.take()
+        }
+        else
+        {
+            None
+        }
+    }
+
+    fn take<'b>(&'b mut self) -> Option<&Token>
+    {
+        if self.index < 0
+        {
+            return None
+        }
+        self.index -= 1;
+        self.tokens.get((self.index + 1) as usize)
     }
 }
 
-pub fn parse_to_ast(tokens: &Vec<(Literal, Token)>) -> CompileResult<AST>
+pub fn parse_to_ast(tokens: & Vec<Token>) -> CompileResult<AST>
 {
     let mut parser = Parser::new(tokens);
 
     let mut sections = vec![];
 
-    while let Some((_, _)) = parser.peek()
+    while let Some(_) = parser.peek()
     {
-        let section = eat_section(&mut parser)?;
+        let section: SectionNode = eat_section(&mut parser)?;
         sections.push(section);
     }
 
     Ok(sections)
 }
 
-fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
+fn eat_section(parser: & mut Parser) -> CompileResult<SectionNode>
 {
-    let (mut section_literal, section_token) = parser.peek_copy().ok_or(
-        CompileError::GenericSyntax("Encountered EOF while parsing section block".to_string()))?;
-    let section_name = if let Token::Section(ref name) = section_token
+    let should_take = |t: &Token|
     {
-        parser.take();
-        name.clone()
+        match t.token
+        {
+            TokenValue::Section(_) => true,
+            _ => false
+        }
+    };
+
+    let (section_token) = parser.peek_and_take_if(should_take).ok_or(
+        CompileError::GenericSyntax("Encountered EOF while parsing section block"))?;
+
+    let section_name: &str = if let TokenValue::Section(ref name) = section_token.token
+    {
+        name
     }
     else
     {
-        section_literal.literal = "<implicit-section>".to_string();
-        "".to_string()
+        "<implicit-section>"
     };
 
-    let mut first_staff: Option<Literal> = None;
+    let mut first_staff: Option<&Token> = None;
     let mut preamble: Vec<PreambleNode> = vec![];
     let mut measures: Vec<MeasureNode> = vec![];
 
     // parse the preamble
-    while let Some((_, token)) = parser.peek_copy()
+    while let Some(token) = parser.peek_ref()
     {
-        let node = match token
+        let node = match token.token
         {
-            Token::Dynamic(_) |
-            Token::TimeSignature(_) |
-            Token::Scale(_) |
-            Token::Tempo(_) |
-            Token::Endline() =>
+            TokenValue::Dynamic(_) |
+            TokenValue::TimeSignature(_) |
+            TokenValue::Scale(_) |
+            TokenValue::Tempo(_) |
+            TokenValue::Endline() =>
             {
-                eat_preamble_atomic(parser)
+                eat_preamble_atomic(&mut parser)
             },
-            Token::Track(_) |
-            Token::MeasureBar(_, _) |
-            Token::AbsolutePitch(_) |
-            Token::ScaleDegree(_) |
-            Token::Note(_) |
-            Token::Section(_) => break,
+            TokenValue::Track(_) |
+            TokenValue::MeasureBar(_, _) |
+            TokenValue::AbsolutePitch(_) |
+            TokenValue::ScaleDegree(_) |
+            TokenValue::Note(_) |
+            TokenValue::Section(_) => break,
         }?;
 
         preamble.push(node);
@@ -181,34 +207,34 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
     }).collect();
 
     // parse the staff
-    while let Some((literal, token)) = parser.peek_copy()
+    while let Some(token) = parser.peek()
     {
-        let node = match token
+        let node: Option<MeasureNode> = match token.token
         {
-            Token::Section(_) => break,
-            Token::Dynamic(_) |
-            Token::Tempo(_) |
-            Token::Scale(_) |
-            Token::TimeSignature(_) =>
+            TokenValue::Section(_) => break,
+            TokenValue::Dynamic(_) |
+            TokenValue::Tempo(_) |
+            TokenValue::Scale(_) |
+            TokenValue::TimeSignature(_) =>
             {
                 if let Some(ref first) = first_staff
                 {
-                    Err(CompileError::PreambleOrder(section_literal.clone(), first.clone(), literal))
+                    Err(CompileError::PreambleOrder(section_token, first, parser.take().unwrap()))
                 }
                 else
                 {
-                    Err(CompileError::GenericSyntax("Expected a staff element".to_string()))
+                    Err(CompileError::GenericSyntax("Expected a staff element"))
                 }
             },
-            Token::Endline() |
-            Token::MeasureBar(_, _) |
-            Token::Track(_) |
-            Token::ScaleDegree(_) |
-            Token::AbsolutePitch(_) |
-            Token::Note(_) =>
+            TokenValue::Endline() |
+            TokenValue::MeasureBar(_, _) |
+            TokenValue::Track(_) |
+            TokenValue::ScaleDegree(_) |
+            TokenValue::AbsolutePitch(_) |
+            TokenValue::Note(_) =>
             {
-                first_staff.get_or_insert(literal);
-                eat_measure_block(parser)
+                first_staff.get_or_insert(parser.take().unwrap());
+                eat_measure_block(&mut parser)
             }
         }?;
 
@@ -218,97 +244,95 @@ fn eat_section(parser: &mut Parser) -> CompileResult<SectionNode>
         }
     }
 
-    Ok(SectionNode { literal: section_literal, name: section_name, preamble, measures })
+    Ok(SectionNode { token: section_token, name: section_name, preamble, measures })
 }
 
-fn atomic_token_to_staff_node(token: Token, literal: Literal) -> Option<StaffNode>
+fn atomic_token_to_staff_node(token: &Token) -> Option<StaffNode>
 {
-    match token
+    match &token.token
     {
-        Token::Note(note) => Some(StaffNode::Note{ literal, note }),
-        Token::Track(track_id) => Some(StaffNode::Track{ literal, track_id }),
-        Token::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ literal, degree }),
-        Token::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ literal, pitch }),
-        Token::MeasureBar(close, open) => Some(StaffNode::MeasureBar { literal, close, open }),
-        Token::Endline() => Some(StaffNode::Endline{ literal }),
-        Token::Tempo(_) |
-        Token::Dynamic(_) |
-        Token::Scale(_) |
-        Token::TimeSignature(_) |
-        Token::Section(_) => None
+        TokenValue::Note(note) => Some(StaffNode::Note{ token, note: note.clone() }),
+        TokenValue::Track(track_id) => Some(StaffNode::Track{ token, track_id: *track_id }),
+        TokenValue::ScaleDegree(degree) => Some(StaffNode::ScaleDegree{ token, degree: *degree }),
+        TokenValue::AbsolutePitch(pitch) => Some(StaffNode::AbsolutePitch{ token, pitch: *pitch }),
+        TokenValue::MeasureBar(close, open) => Some(StaffNode::MeasureBar { token, close: *close, open: *open }),
+        TokenValue::Endline() => Some(StaffNode::Endline{ token }),
+        TokenValue::Tempo(_) |
+        TokenValue::Dynamic(_) |
+        TokenValue::Scale(_) |
+        TokenValue::TimeSignature(_) |
+        TokenValue::Section(_) => None
     }
 }
 
-fn atomic_token_to_preamble_node(token: Token, literal: Literal) -> Option<PreambleNode>
+fn atomic_token_to_preamble_node(token: & Token) -> Option<PreambleNode>
 {
-    match token
+    match &token.token
     {
-        Token::Tempo(bpm) => Some(PreambleNode::Tempo{ literal, tempo: bpm }),
-        Token::Dynamic(level) => Some(PreambleNode::DynamicLevel{ literal, level }),
-        Token::Scale(scale) => Some(PreambleNode::Scale{ literal, scale: scale.clone() }),
-        Token::TimeSignature(ratio) => Some(PreambleNode::TimeSignature{ literal, ratio }),
-        Token::Endline() => Some(PreambleNode::Endline(literal)),
-        Token::Track(_) |
-        Token::ScaleDegree(_) |
-        Token::AbsolutePitch(_) |
-        Token::MeasureBar(_, _) |
-        Token::Section(_) |
-        Token::Note(_) => None
+        TokenValue::Tempo(bpm) => Some(PreambleNode::Tempo{ token, tempo: *bpm }),
+        TokenValue::Dynamic(level) => Some(PreambleNode::DynamicLevel{ token, level: *level }),
+        TokenValue::Scale(scale) => Some(PreambleNode::Scale{ token, scale: scale.clone() }),
+        TokenValue::TimeSignature(ratio) => Some(PreambleNode::TimeSignature{ token, ratio: *ratio }),
+        TokenValue::Endline() => Some(PreambleNode::Endline(token)),
+        TokenValue::Track(_) |
+        TokenValue::ScaleDegree(_) |
+        TokenValue::AbsolutePitch(_) |
+        TokenValue::MeasureBar(_, _) |
+        TokenValue::Section(_) |
+        TokenValue::Note(_) => None
     }
 }
 
-fn eat_staff_atomic(parser: &mut Parser) -> CompileResult<StaffNode>
+fn eat_staff_atomic(parser: & mut Parser) -> CompileResult<StaffNode>
 {
-    if let Some((literal, token)) = parser.take()
+    if let Some(token) = parser.take()
     {
-        if let Some(node) = atomic_token_to_staff_node(token.clone(), literal.clone())
+        if let Some(node) = atomic_token_to_staff_node(token)
         {
             return Ok(node);
         }
         else
         {
-            return Err(CompileError::Unexpected(
-                "Expected an atomic staff token".to_string(), token, literal));
+            return Err(CompileError::Unexpected("Expected an atomic staff token", token));
         }
     }
 
-    Err(CompileError::GenericSyntax("Expected an atomic token, but nothing left".to_string()))
+    Err(CompileError::GenericSyntax("Expected an atomic token, but nothing left"))
 }
 
-fn eat_preamble_atomic(parser: &mut Parser) -> CompileResult<PreambleNode>
+fn eat_preamble_atomic(parser: & mut Parser) -> CompileResult<PreambleNode>
 {
-    if let Some((literal, token)) = parser.take()
+    if let Some(token) = parser.take()
     {
-        if let Some(node) = atomic_token_to_preamble_node(token.clone(), literal.clone())
+        if let Some(node) = atomic_token_to_preamble_node(token)
         {
             return Ok(node);
         }
         else
         {
-            return Err(CompileError::Unexpected(
-                "Expected an atomic preamble token".to_string(), token, literal));
+            return Err(CompileError::Unexpected("Expected an atomic preamble token", token));
         }
     }
 
-    Err(CompileError::GenericSyntax("Expected a preamble token, but nothing left".to_string()))
+    Err(CompileError::GenericSyntax("Expected a preamble token, but nothing left"))
 }
 
-fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
+fn eat_measure_block(parser: & mut Parser) -> CompileResult<Option<MeasureNode>>
 {
     let mut staff = vec![];
     let mut skip_next_bar = true;
 
-    let mut measure_start: Option<(Literal, Token)> = None;
-    let mut measure_end: Option<(Literal, Token)> = None;
+    let mut measure_start: Option<& Token> = None;
+    let mut measure_end: Option<& Token> = None;
 
-    while let Some((literal, token)) = parser.peek()
+    while let Some(token) = parser.peek()
     {
-        measure_start.get_or_insert((literal.clone(), token.clone()));
-        measure_end = Some((literal.clone(), token.clone()));
+        measure_start.get_or_insert(token);
+        measure_end = Some(token);
 
-        let node = match token
+        let node = match token.token
         {
-            Token::MeasureBar(_, _) =>
+            TokenValue::MeasureBar(_, _) =>
             {
                 if skip_next_bar
                 {
@@ -321,25 +345,23 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
                     break
                 }
             }
-            Token::Section(_) =>
+            TokenValue::Section(_) =>
             {
                 break
             }
-            Token::AbsolutePitch(_) |
-            Token::ScaleDegree(_) |
-            Token::Endline() |
-            Token::Track(_) |
-            Token::Note(_) =>
+            TokenValue::AbsolutePitch(_) |
+            TokenValue::ScaleDegree(_) |
+            TokenValue::Endline() |
+            TokenValue::Track(_) |
+            TokenValue::Note(_) =>
             {
                 skip_next_bar = false;
                 Some(eat_staff_atomic(parser))
             },
-            Token::Dynamic(_) |
-            Token::Tempo(_) |
-            Token::TimeSignature(_) |
-            Token::Scale(_) => Some(Err(CompileError::Unexpected(
-                "Illegal token in measure block".to_string(),
-                token.clone(), literal.clone()))),
+            TokenValue::Dynamic(_) |
+            TokenValue::Tempo(_) |
+            TokenValue::TimeSignature(_) |
+            TokenValue::Scale(_) => Some(Err(CompileError::Unexpected("Illegal token in measure block", token))),
         };
 
         if let Some(n) = node
@@ -358,13 +380,13 @@ fn eat_measure_block(parser: &mut Parser) -> CompileResult<Option<MeasureNode>>
     });
 
     let start = measure_start.ok_or(
-        CompileError::GenericSyntax("No start token for measure".to_string()))?;
+        CompileError::GenericSyntax("No start token for measure"))?;
     let end = measure_end.ok_or(
-        CompileError::GenericSyntax("No end token for measure".to_string()))?;
+        CompileError::GenericSyntax("No end token for measure"))?;
 
     if staff.is_empty()
     {
-        return Err(CompileError::EmptyMeasure(start.0, end.0))
+        return Err(CompileError::EmptyMeasure(start, end))
     }
 
     if contains_endline && staff.len() == 1
@@ -390,26 +412,26 @@ fn staff_node_to_string(node: &StaffNode, level: u32) -> String
 
     match node
     {
-        StaffNode::AbsolutePitch{literal, ..} => format!("{}[pitch] {}", pad, literal.literal),
-        StaffNode::Note{literal, ..} => format!("{}[note] {}", pad, literal.literal),
-        StaffNode::Track{literal, ..} => format!("{}[track] {}", pad, literal.literal),
-        StaffNode::ScaleDegree{literal, ..}  => format!("{}[relpitch] {}", pad, literal.literal),
-        StaffNode::MeasureBar{literal, ..}  => format!("{}[mb] {}", pad, literal.literal),
+        StaffNode::AbsolutePitch{token, ..} => format!("{}[pitch] {}", pad, token.literal.literal),
+        StaffNode::Note{token, ..} => format!("{}[note] {}", pad, token.literal.literal),
+        StaffNode::Track{token, ..} => format!("{}[track] {}", pad, token.literal.literal),
+        StaffNode::ScaleDegree{token, ..}  => format!("{}[relpitch] {}", pad, token.literal.literal),
+        StaffNode::MeasureBar{token, ..}  => format!("{}[mb] {}", pad, token.literal.literal),
         StaffNode::Endline { .. } => format!("{}[endline]", pad),
     }
 }
 
-fn preamble_node_to_string(node: &PreambleNode, level: u32) -> String
+fn preamble_node_to_string(node: &PreambleNode) -> String
 {
     let pad = "            ";
 
     match node
     {
-        PreambleNode::Tempo{literal, ..} => format!("{}[tempo] {}", pad, literal.literal),
-        PreambleNode::DynamicLevel { literal, .. } => format!("{}[dyn] {}", pad, literal.literal),
-        PreambleNode::TimeSignature { literal, .. } => format!("{}[time] {}", pad, literal.literal),
-        PreambleNode::Scale { literal, .. } => format!("{}[scale] {}", pad, literal.literal),
-        PreambleNode::Endline(literal) => format!("{}[endline]", pad),
+        PreambleNode::Tempo{token, ..} => format!("{}[tempo] {}", pad, token.literal.literal),
+        PreambleNode::DynamicLevel {token, .. } => format!("{}[dyn] {}", pad, token.literal.literal),
+        PreambleNode::TimeSignature {token, .. } => format!("{}[time] {}", pad, token.literal.literal),
+        PreambleNode::Scale {token, .. } => format!("{}[scale] {}", pad, token.literal.literal),
+        PreambleNode::Endline(_) => format!("{}[endline]", pad),
     }
 }
 
@@ -418,7 +440,7 @@ impl MeasureNode
     fn to_string(&self, level: u32) -> String
     {
         let mut segments = vec![];
-        segments.push(format!("            [measure] {} .. {}", self.start.0.literal, self.end.0.literal));
+        segments.push(format!("            [measure] {} .. {}", self.start.literal.literal, self.end.literal.literal));
         for n in &self.staff
         {
             segments.push(staff_node_to_string(n, level + 1))
@@ -430,12 +452,12 @@ impl MeasureNode
 fn section_to_string(section: &SectionNode) -> String
 {
     let mut segments = vec![
-        format!("    [section] {}", section.literal.literal)];
+        format!("    [section] {}", section.token.literal.literal)];
 
     segments.push("        [preamble]".to_string());
     for n in &section.preamble
     {
-        segments.push(preamble_node_to_string(n, 3));
+        segments.push(preamble_node_to_string(n));
     }
 
     segments.push("        [staff]".to_string());
@@ -483,37 +505,37 @@ pub fn print_error(error: &CompileError)
         {
             println!("\n  Generic error: {}\n", msg);
         },
-        CompileError::Unexpected(msg, token, literal) =>
+        CompileError::Unexpected(msg, token) =>
         {
             println!("\n  Unexpected token: {}\n    Problematic token -- \"{}\", line {}, col {}\n",
-                msg, literal.literal, literal.lineno, literal.colno);
+                msg, token.literal.literal, token.literal.lineno, token.literal.colno);
         },
         CompileError::PreambleOrder(section, first, cur) =>
         {
             println!("\n  Cannot declare preamble element after staff has begun.");
             println!("    In this section --          \"{}\", line {}, col {}",
-                section.literal, section.lineno, section.colno);
+                section.literal.literal, section.literal.lineno, section.literal.colno);
             println!("    Staff begins here --        \"{}\", line {}, col {}",
-                first.literal, first.lineno, first.colno);
+                first.literal.literal, first.literal.lineno, first.literal.colno);
             println!("    Problematic element is --   \"{}\", line {}, col {}\n",
-                cur.literal, cur.lineno, cur.colno);
+                cur.literal.literal, cur.literal.lineno, cur.literal.colno);
         },
         CompileError::EmptyMeasure(start, end) =>
         {
             println!("\n  Empty measure.");
             println!("    Measure starts here -- \"{}\", line {}, col {}",
-                start.literal, start.lineno, start.colno);
+                start.literal.literal, start.literal.lineno, start.literal.colno);
             println!("    Measure ends here -- \"{}\", line {}, col {}\n",
-                end.literal, end.lineno, end.colno);
+                end.literal.literal, end.literal.lineno, end.literal.colno);
         },
         CompileError::TimeSignatureViolation{ measure, time_signature, nominal } =>
         {
             println!("\n    {}\n", "Time signature violation.".bold());
             println!("    This measure is {} beats, which violates time signature {:?}",
                 measure.count_beats(), nominal);
-            println!("    Time signature declared here -- {}", time_signature.to_string());
-            println!("    Initiating element --  {}", measure.start.to_string());
-            println!("    Terminating element -- {}\n", measure.end.to_string());
+            println!("    Time signature declared here -- {}", time_signature.literal.to_string());
+            println!("    Initiating element --  {}", measure.start.literal.to_string());
+            println!("    Terminating element -- {}\n", measure.end.literal.to_string());
 
             // show_file(&measure.start, &measure.end, filename);
         },
@@ -525,6 +547,11 @@ pub fn print_error(error: &CompileError)
         CompileError::FileError(e) =>
         {
             println!("\n    {}\n", "File IO error.".bold());
+            println!("    {:?}\n", e);
+        }
+        CompileError::HoundError(e) =>
+        {
+            println!("\n    {}\n", "Hound error.".bold());
             println!("    {:?}\n", e);
         }
         CompileError::TrackTooLarge =>
@@ -549,7 +576,7 @@ fn assert_ast_results(source: &str, ast_repr: &str)
 {
     let tokens = lex_multiline_string(source).unwrap();
     let tree = parse_to_ast(&tokens).unwrap();
-    let repr = tree_to_string(&tree);
+    let repr: String = tree_to_string(&tree);
     assert_eq!(repr, ast_repr);
 }
 

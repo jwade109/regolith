@@ -2,28 +2,29 @@ use fraction::Fraction;
 use reqwest::{Error as ReqError, StatusCode};
 
 #[derive(Debug)]
-pub enum CompileError
+pub enum CompileError<>
 {
-    Generic(String),
-    GenericSyntax(String),
-    Unexpected(String, Token, Literal),
-    PreambleOrder(Literal, Literal, Literal),
-    EmptyMeasure(Literal, Literal),
+    Generic(&'static str),
+    GenericSyntax(&'static str),
+    Unexpected(&'static str, & Token),
+    PreambleOrder(& Token, & Token, & Token),
+    EmptyMeasure(& Token, & Token),
     InvalidSyntax(Literal),
     TimeSignatureViolation
     {
-        measure: Measure,
-        time_signature: Literal,
+        measure: Measure<>,
+        time_signature: & Token,
         nominal: TimeSignature,
     },
     FileError(std::io::Error),
     NetworkError(reqwest::Error),
+    HoundError(hound::Error),
     TrackTooLarge,
     DifferingMeasureCounts(u32, usize, u32, usize),
     EmptyTrack(u32),
 }
 
-impl From<std::io::Error> for CompileError
+impl<> From<std::io::Error> for CompileError<>
 {
     fn from(error: std::io::Error) -> Self
     {
@@ -31,11 +32,11 @@ impl From<std::io::Error> for CompileError
     }
 }
 
-impl From<hound::Error> for CompileError
+impl<> From<hound::Error> for CompileError<>
 {
     fn from(error: hound::Error) -> Self
     {
-        CompileError::Generic("Hound error".to_string())
+        CompileError::HoundError(error)
     }
 }
 
@@ -66,7 +67,7 @@ pub struct RegoNote
     pub beats: Fraction
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DynamicLevel
 {
     Pianissimo,
@@ -77,7 +78,7 @@ pub enum DynamicLevel
     Fortissimo
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToneId(pub u8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,7 +129,7 @@ fn test_sample_scale()
 pub type TimeSignature = (u8, u8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Token
+pub enum TokenValue
 {
     Track(u32),
     Tempo(u16),
@@ -143,28 +144,35 @@ pub enum Token
     Endline(),
 }
 
-pub type CompileResult<T> = Result<T, CompileError>;
-
 #[derive(Debug, Clone)]
-pub struct NoteDecl
+pub struct Token
 {
-    pub note: RegoNote,
-    pub note_literal: Literal,
+    pub literal: Literal,
+    pub token: TokenValue
+}
+
+pub type CompileResult<T> = Result<T, CompileError<>>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct NoteDecl<>
+{
+    pub note: & RegoNote,
+    pub decl: & Token,
     pub tone_id: ToneId
 }
 
 #[derive(Debug, Clone)]
-pub struct Measure
+pub struct Measure<>
 {
-    pub start: Literal,
-    pub end: Literal,
+    pub start: & Token,
+    pub end: & Token,
     pub close: bool,
     pub open: bool,
     pub track: u32,
-    pub notes: Vec<NoteDecl>
+    pub notes: Vec<NoteDecl<>>
 }
 
-impl Measure
+impl<> Measure<>
 {
     pub fn count_beats(&self) -> Fraction
     {
